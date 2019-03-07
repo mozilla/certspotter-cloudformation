@@ -136,12 +136,18 @@ Resources:
           #!/bin/bash -ex
           for i in {1..3}; do /usr/bin/easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz 2>&1 >> /var/log/initial_user-data.log && break || sleep 10; done
           install --owner=centos --group=centos --mode=0644 /dev/null /var/log/certspotter.log
-          cat << EOF > /etc/cron.d/certspotter
-          ${CronSchedule} centos /home/centos/gocode/bin/certspotter -script /home/centos/send_to_mozdef.py | /bin/ts >> /var/log/certspotter.log 2>&1
+          cat << 'EOF' > /etc/cron.d/certspotter
+          ${CronSchedule} centos test -d "/proc/$(test -e /home/centos/.certspotter/lock && cat /home/centos/.certspotter/lock || echo nolock)" || /home/centos/gocode/bin/certspotter -verbose -script /home/centos/send_to_mozdef.py >> /var/log/certspotter.log 2>&1
+          EOF
+          cat << 'EOF' > /etc/logrotate.d/certspotter
+          /var/log/certspotter.log {
+              missingok
+              create 0644 centos centos
+          }
           EOF
           yum --assumeyes install epel-release
-          yum --assumeyes install golang git python-pip awscli jq moreutils
-          pip install mozdef_client
+          yum --assumeyes install golang git python-pip jq
+          pip install mozdef_client awscli
           install --owner=centos --group=centos --directory /home/centos/gocode
           install --owner=centos --group=centos --directory /home/centos/.certspotter
           install --owner=centos --group=centos --mode=0644 /dev/null /home/centos/.certspotter/watchlist
@@ -149,7 +155,7 @@ Resources:
           export GOPATH=/home/centos/gocode
           /usr/bin/go get software.sslmate.com/src/certspotter/cmd/certspotter
           install --owner=centos --group=centos --mode=0755 /dev/null /home/centos/send_to_mozdef.py
-          cat << EOF > /home/centos/send_to_mozdef.py
+          cat << 'EOF' > /home/centos/send_to_mozdef.py
           #!/usr/bin/env python
           import mozdef_client, os
           ARGS = ['${SQSRegion}','${SQSQueueName}','${SQSAccountId}']
