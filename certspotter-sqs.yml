@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: SSLMate Cert Spotter MozDef monitor
 Metadata:
-  SourceCode: https://github.com/gene1wood/certspotter-cloudformation
+  SourceCode: https://github.com/mozilla/certspotter-cloudformation
   Todo1: Convert to AWS lambda function
   Todo2: Add heartbeat/watchdog to detect if the cronjob stops working
 Parameters:
