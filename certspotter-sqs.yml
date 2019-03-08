@@ -1,0 +1,207 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: SSLMate Cert Spotter MozDef monitor
+Metadata:
+  SourceCode: https://github.com/mozilla/certspotter-cloudformation
+  Todo1: Convert to AWS lambda function
+  Todo2: Add heartbeat/watchdog to detect if the cronjob stops working
+Parameters:
+  SSHKeyName:
+    Description: SSH Key Name
+    Type: String
+  SQSRegion:
+    Description: The AWS region containing the target SQS queue
+    Type: String
+  SQSQueueName:
+    Description: The name of the SQS queue to send events to
+    Type: String
+  SQSAccountId:
+    Description: The AWS account ID that contains the SQS queue if that queue is not
+      in the local account or the local account's account id if the SQS queue is local
+    Type: String
+  WatchListURI:
+    Description: An s3 URL to a JSON document containing the list of domains
+      under a 'domains' key
+    Type: String
+    ConstraintDescription: An s3 URL beginnging with s3://
+    AllowedPattern: '^s3://.*'
+  CronSchedule:
+    Description: 'The 5 field crontab schedule for running certspotter (Default : Hourly)'
+    Type: String
+    Default: '0 * * * *'
+  EIPAllocationId:
+    Description: The optional Allocation ID of the already existing Elastic IP you
+      want to associate with this new instance
+    Type: String
+    Default: ''
+Conditions:
+  AssociateEIP: !Not [ !Equals [ !Ref 'EIPAllocationId', '' ] ]
+Mappings:
+  RegionMap:
+    ap-northeast-1:
+      CentOS7x8664EBSHVM: ami-045f38c93733dd48d
+    ap-northeast-2:
+      CentOS7x8664EBSHVM: ami-06cf2a72dadf92410
+    ap-south-1:
+      CentOS7x8664EBSHVM: ami-02e60be79e78fef21
+    ap-southeast-1:
+      CentOS7x8664EBSHVM: ami-0b4dd9d65556cac22
+    ap-southeast-2:
+      CentOS7x8664EBSHVM: ami-08bd00d7713a39e7d
+    ca-central-1:
+      CentOS7x8664EBSHVM: ami-033e6106180a626d0
+    eu-central-1:
+      CentOS7x8664EBSHVM: ami-04cf43aca3e6f3de3
+    eu-north-1:
+      CentOS7x8664EBSHVM: ami-5ee66f20
+    eu-west-1:
+      CentOS7x8664EBSHVM: ami-0ff760d16d9497662
+    eu-west-2:
+      CentOS7x8664EBSHVM: ami-0eab3a90fc693af19
+    eu-west-3:
+      CentOS7x8664EBSHVM: ami-0e1ab783dc9489f34
+    sa-east-1:
+      CentOS7x8664EBSHVM: ami-0b8d86d4bf91850af
+    us-east-1:
+      CentOS7x8664EBSHVM: ami-02eac2c0129f6376b
+    us-east-2:
+      CentOS7x8664EBSHVM: ami-0f2b4fc905b0bd1f1
+    us-west-1:
+      CentOS7x8664EBSHVM: ami-074e2d6769f445be5
+    us-west-2:
+      CentOS7x8664EBSHVM: ami-01ed306a12b7d1c96
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group
+      SecurityGroupIngress:
+        - FromPort: 22
+          IpProtocol: tcp
+          CidrIp: 0.0.0.0/0
+          ToPort: 22
+  IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: SendSQSMessageToMozDef
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:Send*
+                  - sqs:GetQueueUrl
+                Resource: !Join [ '', [ 'arn:aws:sqs:', !Ref 'SQSRegion', ':', !Ref 'SQSAccountId', ':', !Ref 'SQSQueueName', '*' ] ]
+        - PolicyName: ReadInfosecInternalData
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Join [ '', [ 'arn:aws:s3:::', !Select [ '2', !Split [ '/', !Ref 'WatchListURI' ] ], '/*' ] ]
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Join [ '', [ 'arn:aws:s3:::', !Select [ '2', !Split [ '/', !Ref 'WatchListURI' ] ] ] ]
+              - Effect: Allow
+                Action: s3:ListAllMyBuckets
+                Resource: '*'
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref IAMRole
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', CentOS7x8664EBSHVM ]
+      InstanceType: t2.micro
+      Tags:
+        - Key: Name
+          Value: certspotter
+      KeyName: !Ref SSHKeyName
+      SecurityGroups:
+        - !Ref SecurityGroup
+      IamInstanceProfile: !Ref InstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -ex
+          for i in {1..3}; do /usr/bin/easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz 2>&1 >> /var/log/initial_user-data.log && break || sleep 10; done
+          install --owner=centos --group=centos --mode=0644 /dev/null /var/log/certspotter.log
+          cat << 'EOF' > /etc/cron.d/certspotter
+          ${CronSchedule} centos test -d "/proc/$(test -e /home/centos/.certspotter/lock && cat /home/centos/.certspotter/lock || echo nolock)" || /home/centos/gocode/bin/certspotter -verbose -script /home/centos/send_to_mozdef.py >> /var/log/certspotter.log 2>&1
+          EOF
+          cat << 'EOF' > /etc/logrotate.d/certspotter
+          /var/log/certspotter.log {
+              missingok
+              create 0644 centos centos
+          }
+          EOF
+          yum --assumeyes install epel-release
+          yum --assumeyes install golang git python-pip jq
+          pip install mozdef_client awscli
+          install --owner=centos --group=centos --directory /home/centos/gocode
+          install --owner=centos --group=centos --directory /home/centos/.certspotter
+          install --owner=centos --group=centos --mode=0644 /dev/null /home/centos/.certspotter/watchlist
+          aws s3 cp --quiet ${WatchListURI} /dev/stdout | jq -r '.domains|map("."+.)|.[]' > /home/centos/.certspotter/watchlist
+          export GOPATH=/home/centos/gocode
+          /usr/bin/go get software.sslmate.com/src/certspotter/cmd/certspotter
+          install --owner=centos --group=centos --mode=0755 /dev/null /home/centos/send_to_mozdef.py
+          cat << 'EOF' > /home/centos/send_to_mozdef.py
+          #!/usr/bin/env python
+          import mozdef_client, os
+          ARGS = ['${SQSRegion}','${SQSQueueName}','${SQSAccountId}']
+          msg = mozdef_client.MozDefEvent('https://127.0.0.1/this/url/is/not/used')
+          msg.summary = 'New certificate detected in Certificate Transparency logs'
+          msg.tags = ['tls', 'certificatetransparency']
+          for key in (set(os.environ.data.keys()) &
+                          {'FINGERPRINT', 'LOG_URI','CERT_TYPE', 'ISSUER_DN', 'SERIAL',
+                           'SUBJECT_DN', 'NOT_AFTER_UNIXTIME', 'NOT_BEFORE_UNIXTIME',
+                           'PUBKEY_HASH', 'CERT_PARSEABLE','ENTRY_INDEX'}):
+              msg.details[key.lower().translate(None,'_')] = os.environ.data[key]
+          msg.details['dnsnames'] = [x.strip() for x
+                                      in os.environ.data['DNS_NAMES'].split(',')]
+          with open('/home/centos/.certspotter/watchlist') as f:
+              watchlist = f.read().splitlines()
+          msg.details['watched_dnsnames'] = [
+              dnsname for dnsname in msg.details['dnsnames']
+              if (dnsname in watchlist)
+              or len(
+                  [watchname for watchname in watchlist
+                   if watchname[:1] == '.'
+                   and (dnsname.endswith(watchname)
+                        or dnsname == watchname.lstrip('.'))]) > 0]
+          msg.set_send_to_sqs(True)
+          msg.set_sqs_region(ARGS[0])
+          msg.set_sqs_queue_name(ARGS[1])
+          msg.set_sqs_aws_account_id(ARGS[2])
+          msg.send()
+          EOF
+          touch /etc/cron.d/certspotter
+          /usr/bin/cfn-signal '${WaitConditionHandle}' 2>&1 >> /var/log/initial_user-data.log
+  WaitConditionHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
+  WaitCondition:
+    Type: AWS::CloudFormation::WaitCondition
+    DependsOn: Instance
+    Properties:
+      Handle: !Ref WaitConditionHandle
+      Timeout: '300'
+  EIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Condition: AssociateEIP
+    Properties:
+      AllocationId: !Ref EIPAllocationId
+      InstanceId: !Ref Instance
+Outputs:
+  CloudInitOutput:
+    Description: The data returned to the WaitConditionHandle from Cloud Init
+    Value: !GetAtt WaitCondition.Data
