@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: 2010-09-09
 Description: SSLMate Cert Spotter SES Email monitor
 Metadata:
   SourceCode: https://github.com/gene1wood/certspotter-cloudformation
@@ -22,51 +22,72 @@ Parameters:
   ToEmailAddress:
     Description: Email address to send reports to
     Type: String
-  WatchList:
-    Description: Comma delimited list of domains to watch
-    Type: CommaDelimitedList
-    Default: .mozilla.com, .mozilla.org, .mozilla.net, .firefox.com, .getfirefox.com
+  WatchListURI:
+    Description: An s3 URL to a JSON document containing the list of domains
+      under a 'domains' key
+    Type: String
+    ConstraintDescription: An s3 URL beginnging with s3://
+    AllowedPattern: '^s3://.*'
   CronSchedule:
-    Description: The 5 field crontab schedule for running certspotter
+    Description: 'The 5 field crontab schedule for running certspotter (Default : Hourly)'
     Type: String
     Default: '0 * * * *'
+  EIPAllocationId:
+    Description: The optional Allocation ID of the already existing Elastic IP you
+      want to associate with this new instance
+    Type: String
+    Default: ''
+Conditions:
+  AssociateEIP: !Not [ !Equals [ !Ref 'EIPAllocationId', '' ] ]
 Mappings:
   RegionMap:
-    us-east-1:
-      CentOS7x8664withUpdatesHVM: ami-6d1c2007
-    us-west-2:
-      CentOS7x8664withUpdatesHVM: ami-d2c924b2
-    us-west-1:
-      CentOS7x8664withUpdatesHVM: ami-af4333cf
-    eu-central-1:
-      CentOS7x8664withUpdatesHVM: ami-9bf712f4
-    eu-west-1:
-      CentOS7x8664withUpdatesHVM: ami-7abd0209
-    ap-southeast-1:
-      CentOS7x8664withUpdatesHVM: ami-f068a193
-    ap-southeast-2:
-      CentOS7x8664withUpdatesHVM: ami-fedafc9d
     ap-northeast-1:
-      CentOS7x8664withUpdatesHVM: ami-eec1c380
+      CentOS7x8664EBSHVM: ami-045f38c93733dd48d
     ap-northeast-2:
-      CentOS7x8664withUpdatesHVM: ami-c74789a9
+      CentOS7x8664EBSHVM: ami-06cf2a72dadf92410
+    ap-south-1:
+      CentOS7x8664EBSHVM: ami-02e60be79e78fef21
+    ap-southeast-1:
+      CentOS7x8664EBSHVM: ami-0b4dd9d65556cac22
+    ap-southeast-2:
+      CentOS7x8664EBSHVM: ami-08bd00d7713a39e7d
+    ca-central-1:
+      CentOS7x8664EBSHVM: ami-033e6106180a626d0
+    eu-central-1:
+      CentOS7x8664EBSHVM: ami-04cf43aca3e6f3de3
+    eu-north-1:
+      CentOS7x8664EBSHVM: ami-5ee66f20
+    eu-west-1:
+      CentOS7x8664EBSHVM: ami-0ff760d16d9497662
+    eu-west-2:
+      CentOS7x8664EBSHVM: ami-0eab3a90fc693af19
+    eu-west-3:
+      CentOS7x8664EBSHVM: ami-0e1ab783dc9489f34
     sa-east-1:
-      CentOS7x8664withUpdatesHVM: ami-26b93b4a
+      CentOS7x8664EBSHVM: ami-0b8d86d4bf91850af
+    us-east-1:
+      CentOS7x8664EBSHVM: ami-02eac2c0129f6376b
+    us-east-2:
+      CentOS7x8664EBSHVM: ami-0f2b4fc905b0bd1f1
+    us-west-1:
+      CentOS7x8664EBSHVM: ami-074e2d6769f445be5
+    us-west-2:
+      CentOS7x8664EBSHVM: ami-01ed306a12b7d1c96
 Resources:
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security Group
       SecurityGroupIngress:
-        - FromPort: '22'
+        - FromPort: 22
           IpProtocol: tcp
-          CidrIp: '0.0.0.0/0'
-          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+          ToPort: 22
   IAMRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: 2012-10-17
         Statement:
           - Effect: Allow
             Principal:
@@ -77,82 +98,81 @@ Resources:
       Policies:
         - PolicyName: SESSend
           PolicyDocument:
-            Version: '2012-10-17'
+            Version: 2012-10-17
             Statement:
               - Effect: Allow
                 Action: ses:Send*
+                Resource: '*'
+        - PolicyName: ReadInfosecInternalData
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Join [ '', [ 'arn:aws:s3:::', !Select [ '2', !Split [ '/', !Ref 'WatchListURI' ] ], '/*' ] ]
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Join [ '', [ 'arn:aws:s3:::', !Select [ '2', !Split [ '/', !Ref 'WatchListURI' ] ] ] ]
+              - Effect: Allow
+                Action: s3:ListAllMyBuckets
                 Resource: '*'
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Roles:
-        - !Ref 'IAMRole'
+        - !Ref IAMRole
   Instance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: !FindInMap
-        - RegionMap
-        - !Ref 'AWS::Region'
-        - CentOS7x8664withUpdatesHVM
+      ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', CentOS7x8664EBSHVM ]
       InstanceType: t2.micro
       Tags:
         - Key: Name
           Value: certspotter
-      KeyName: !Ref 'SSHKeyName'
+      KeyName: !Ref SSHKeyName
       SecurityGroups:
-        - !Ref 'SecurityGroup'
-      IamInstanceProfile: !Ref 'InstanceProfile'
-      UserData: !Base64
-        Fn::Join:
-          - ''
-          - - "#!/bin/bash -ex\n"
-            - "for i in {1..3}; do /usr/bin/easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz\
-              \ 2>&1 >> /var/log/initial_user-data.log && break || sleep 10; done\n"
-            - "cat << EOF > /etc/cron.d/certspotter\n"
-            - !Ref 'CronSchedule'
-            - ' centos /home/centos/gocode/bin/certspotter 2>&1 | /home/centos/send_email.py '
-            - !Ref 'SESRegion'
-            - ' '
-            - !Ref 'FromEmailAddress'
-            - ' '
-            - !Ref 'ToEmailAddress'
-            - "\n"
-            - "EOF\n"
-            - "yum --assumeyes install golang git\n"
-            - "install --owner=centos --group=centos --directory /home/centos/gocode\n"
-            - "install --owner=centos --group=centos --directory /home/centos/.certspotter\n"
-            - "install --owner=centos --group=centos --mode=0644 /dev/null /home/centos/.certspotter/watchlist\n"
-            - echo "
-            - !Join
-              - "\n"
-              - !Ref 'WatchList'
-            - "\" > /home/centos/.certspotter/watchlist\n"
-            - "export GOPATH=/home/centos/gocode\n"
-            - "/usr/bin/go get software.sslmate.com/src/certspotter/cmd/certspotter\n"
-            - "install --owner=centos --group=centos --mode=0755 /dev/null /home/centos/send_email.py\n"
-            - "cat << EOF > /home/centos/send_email.py\n"
-            - "#!/usr/bin/env python\n"
-            - "import sys, boto.ses, boto.utils\n"
-            - "b=sys.stdin.read()\n"
-            - "m=boto.utils.get_instance_metadata()\n"
-            - "_=boto.ses.connect_to_region(sys.argv[1]).send_email(sys.argv[2], 'Certspotter\
-              \ Report', 'Sender : %s : %s : %s\\nCode : https://github.com/gene1wood/certspotter-cloudformation\\\
-              n\\n' % (m['public-hostname'], m['instance-id'], m['iam']['info']['InstanceProfileArn'])\
-              \ + b, sys.argv[3]) if len(b) > 0 else False\n"
-            - "EOF\n"
-            - "touch /etc/cron.d/certspotter\n"
-            - /usr/bin/cfn-signal '
-            - !Ref 'WaitConditionHandle'
-            - "' 2>&1 >> /var/log/initial_user-data.log\n"
+        - !Ref SecurityGroup
+      IamInstanceProfile: !Ref InstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -ex
+          for i in {1..3}; do /usr/bin/easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz 2>&1 >> /var/log/initial_user-data.log && break || sleep 10; done
+          cat << 'EOF' > /etc/cron.d/certspotter
+          ${CronSchedule} centos test -d "/proc/$(test -e /home/centos/.certspotter/lock && cat /home/centos/.certspotter/lock || echo nolock)" || /home/centos/gocode/bin/certspotter 2>&1 | /home/centos/send_email.py ${SESRegion} ${FromEmailAddress} ${ToEmailAddress}
+          EOF
+          yum --assumeyes install golang git
+          pip install awscli boto
+          install --owner=centos --group=centos --directory /home/centos/gocode
+          install --owner=centos --group=centos --directory /home/centos/.certspotter
+          install --owner=centos --group=centos --mode=0644 /dev/null /home/centos/.certspotter/watchlist
+          aws s3 cp --quiet ${WatchListURI} /dev/stdout | jq -r '.domains|map("."+.)|.[]' > /home/centos/.certspotter/watchlist
+          export GOPATH=/home/centos/gocode
+          /usr/bin/go get software.sslmate.com/src/certspotter/cmd/certspotter
+          install --owner=centos --group=centos --mode=0755 /dev/null /home/centos/send_email.py
+          cat << 'EOF' > /home/centos/send_email.py
+          #!/usr/bin/env python
+          import sys, boto.ses, boto.utils
+          b=sys.stdin.read()
+          m=boto.utils.get_instance_metadata()
+          _=boto.ses.connect_to_region(sys.argv[1]).send_email(sys.argv[2], 'Certspotter Report', 'Sender : %s : %s : %s\\nCode : https://github.com/gene1wood/certspotter-cloudformation\\n\\n' % (m['public-hostname'], m['instance-id'], m['iam']['info']['InstanceProfileArn']) + b, sys.argv[3]) if len(b) > 0 else False
+          EOF
+          touch /etc/cron.d/certspotter
+          /usr/bin/cfn-signal '${WaitConditionHandle}' 2>&1 >> /var/log/initial_user-data.log
   WaitConditionHandle:
     Type: AWS::CloudFormation::WaitConditionHandle
   WaitCondition:
     Type: AWS::CloudFormation::WaitCondition
     DependsOn: Instance
     Properties:
-      Handle: !Ref 'WaitConditionHandle'
+      Handle: !Ref WaitConditionHandle
       Timeout: '300'
+  EIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Condition: AssociateEIP
+    Properties:
+      AllocationId: !Ref EIPAllocationId
+      InstanceId: !Ref Instance
 Outputs:
   CloudInitOutput:
     Description: The data returned to the WaitConditionHandle from Cloud Init
-    Value: !GetAtt 'WaitCondition.Data'
+    Value: !GetAtt WaitCondition.Data
