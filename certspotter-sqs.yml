@@ -1,13 +1,14 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: SSLMate Cert Spotter MozDef monitor
+Description: SSLMate Cert Spotter monitor of the Certificate Transparency logs, emitting events to MozDef
 Metadata:
   SourceCode: https://github.com/mozilla/certspotter-cloudformation
+  Version: 3.1.0
   Todo1: Convert to AWS lambda function
   Todo2: Add heartbeat/watchdog to detect if the cronjob stops working
 Parameters:
   SSHKeyName:
     Description: SSH Key Name
-    Type: String
+    Type: 'AWS::EC2::KeyPair::KeyName'
   SQSRegion:
     Description: The AWS region containing the target SQS queue
     Type: String
@@ -25,9 +26,9 @@ Parameters:
     ConstraintDescription: An s3 URL beginnging with s3://
     AllowedPattern: '^s3://.*'
   CronSchedule:
-    Description: 'The 5 field crontab schedule for running certspotter (Default : Hourly)'
+    Description: 'The 5 field crontab schedule for running certspotter (Default : Every 15 minutes)'
     Type: String
-    Default: '0 * * * *'
+    Default: '*/15 * * * *'
   EIPAllocationId:
     Description: The optional Allocation ID of the already existing Elastic IP you
       want to associate with this new instance
@@ -37,38 +38,46 @@ Conditions:
   AssociateEIP: !Not [ !Equals [ !Ref 'EIPAllocationId', '' ] ]
 Mappings:
   RegionMap:
-    ap-northeast-1:
-      CentOS7x8664EBSHVM: ami-045f38c93733dd48d
-    ap-northeast-2:
-      CentOS7x8664EBSHVM: ami-06cf2a72dadf92410
-    ap-south-1:
-      CentOS7x8664EBSHVM: ami-02e60be79e78fef21
-    ap-southeast-1:
-      CentOS7x8664EBSHVM: ami-0b4dd9d65556cac22
-    ap-southeast-2:
-      CentOS7x8664EBSHVM: ami-08bd00d7713a39e7d
-    ca-central-1:
-      CentOS7x8664EBSHVM: ami-033e6106180a626d0
-    eu-central-1:
-      CentOS7x8664EBSHVM: ami-04cf43aca3e6f3de3
-    eu-north-1:
-      CentOS7x8664EBSHVM: ami-5ee66f20
-    eu-west-1:
-      CentOS7x8664EBSHVM: ami-0ff760d16d9497662
-    eu-west-2:
-      CentOS7x8664EBSHVM: ami-0eab3a90fc693af19
-    eu-west-3:
-      CentOS7x8664EBSHVM: ami-0e1ab783dc9489f34
-    sa-east-1:
-      CentOS7x8664EBSHVM: ami-0b8d86d4bf91850af
-    us-east-1:
-      CentOS7x8664EBSHVM: ami-02eac2c0129f6376b
     us-east-2:
-      CentOS7x8664EBSHVM: ami-0f2b4fc905b0bd1f1
+      CentOS8StreamX8664EBSHVM: ami-045b0a05944af45c1
+    us-east-1:
+      CentOS8StreamX8664EBSHVM: ami-0ee70e88eed976a1b
     us-west-1:
-      CentOS7x8664EBSHVM: ami-074e2d6769f445be5
+      CentOS8StreamX8664EBSHVM: ami-006f59adcb98c236f
     us-west-2:
-      CentOS7x8664EBSHVM: ami-01ed306a12b7d1c96
+      CentOS8StreamX8664EBSHVM: ami-056c679fab9e48d8a
+    af-south-1:
+      CentOS8StreamX8664EBSHVM: ami-01d7c2b5c4fc0218a
+    ap-east-1:
+      CentOS8StreamX8664EBSHVM: ami-0b37ca06a565ba470
+    ap-south-1:
+      CentOS8StreamX8664EBSHVM: ami-0967a8b99f328dfee
+    ap-northeast-1:
+      CentOS8StreamX8664EBSHVM: ami-06ee905d0566e92e7
+    ap-northeast-2:
+      CentOS8StreamX8664EBSHVM: ami-054d85b8af5b91956
+    ap-southeast-1:
+      CentOS8StreamX8664EBSHVM: ami-092422d03e2e1e43f
+    ap-southeast-2:
+      CentOS8StreamX8664EBSHVM: ami-0270da940c59823a1
+    ca-central-1:
+      CentOS8StreamX8664EBSHVM: ami-0c43193f9aa2a22db
+    eu-central-1:
+      CentOS8StreamX8664EBSHVM: ami-071096749fda40d3f
+    eu-west-1:
+      CentOS8StreamX8664EBSHVM: ami-0e0669c0b39d3a79f
+    eu-west-2:
+      CentOS8StreamX8664EBSHVM: ami-0418c980c296f36ce
+    eu-west-3:
+      CentOS8StreamX8664EBSHVM: ami-068ebc10e14d9a504
+    eu-south-1:
+      CentOS8StreamX8664EBSHVM: ami-015495d931a04c6a3
+    eu-north-1:
+      CentOS8StreamX8664EBSHVM: ami-0ab62823bc41fa10a
+    me-south-1:
+      CentOS8StreamX8664EBSHVM: ami-08922e5d0a577ac38
+    sa-east-1:
+      CentOS8StreamX8664EBSHVM: ami-0be416330b68d16f4
 Resources:
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -122,7 +131,7 @@ Resources:
   Instance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', CentOS7x8664EBSHVM ]
+      ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', CentOS8StreamX8664EBSHVM ]
       InstanceType: t2.micro
       Tags:
         - Key: Name
@@ -134,10 +143,10 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash -ex
-          for i in {1..3}; do /usr/bin/easy_install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz 2>&1 >> /var/log/initial_user-data.log && break || sleep 10; done
+          for i in {1..3}; do /bin/dnf --assumeyes install python39-pip python39-wheel && /bin/pip3.9 install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz 2>&1 >> /var/log/initial_user-data.log && break || sleep 10; done
           install --owner=centos --group=centos --mode=0644 /dev/null /var/log/certspotter.log
           cat << 'EOF' > /etc/cron.d/certspotter
-          ${CronSchedule} centos test -d "/proc/$(test -e /home/centos/.certspotter/lock && cat /home/centos/.certspotter/lock || echo nolock)" || /home/centos/gocode/bin/certspotter -verbose -script /home/centos/send_to_mozdef.py >> /var/log/certspotter.log 2>&1
+          ${CronSchedule} centos test -d "/proc/$(test -e /home/centos/.certspotter/lock && cat /home/centos/.certspotter/lock || echo nolock)" || ( rm --force --verbose /home/centos/.certspotter/lock && echo "$(date) Starting cron initiated run" && /home/centos/gocode/bin/certspotter -verbose -script /home/centos/send_to_mozdef.py && echo "$(date) Finished cron initiated run" ) >> /var/log/certspotter.log 2>&1
           EOF
           cat << 'EOF' > /etc/logrotate.d/certspotter
           /var/log/certspotter.log {
@@ -145,36 +154,36 @@ Resources:
               create 0644 centos centos
           }
           EOF
-          yum --assumeyes install epel-release
-          yum --assumeyes install golang git python-pip jq
-          pip install mozdef_client awscli
+          dnf --assumeyes install epel-release
+          dnf --assumeyes install golang git jq
+          pip3.9 install mozdef_client awscli
           install --owner=centos --group=centos --directory /home/centos/gocode
           install --owner=centos --group=centos --directory /home/centos/.certspotter
           install --owner=centos --group=centos --mode=0644 /dev/null /home/centos/.certspotter/watchlist
-          aws s3 cp --quiet ${WatchListURI} /dev/stdout | jq -r '.domains|map("."+.)|.[]' > /home/centos/.certspotter/watchlist
-          export GOPATH=/home/centos/gocode
-          /usr/bin/go get software.sslmate.com/src/certspotter/cmd/certspotter
+          /usr/local/bin/aws s3 cp --quiet ${WatchListURI} /dev/stdout | jq -r '.domains|map("."+.)|.[]' > /home/centos/.certspotter/watchlist
+          runuser --login centos -c 'GOPATH=/home/centos/gocode /usr/bin/go get software.sslmate.com/src/certspotter/cmd/certspotter'
           install --owner=centos --group=centos --mode=0755 /dev/null /home/centos/send_to_mozdef.py
+          install --owner=centos --group=centos --mode=0644 /dev/null /home/centos/sqs_info.txt
+          echo -n "${SQSRegion},${SQSQueueName},${SQSAccountId}" > /home/centos/sqs_info.txt
           cat << 'EOF' > /home/centos/send_to_mozdef.py
-          #!/usr/bin/env python
+          #!/usr/bin/env python3
           import mozdef_client, os
-          ARGS = ['${SQSRegion}','${SQSQueueName}','${SQSAccountId}']
+          with open('/home/centos/sqs_info.txt') as f:
+              ARGS = [x.strip() for x in f.read().split(',')]
           msg = mozdef_client.MozDefEvent('https://127.0.0.1/this/url/is/not/used')
           msg.summary = 'New certificate detected in Certificate Transparency logs'
           msg.tags = ['tls', 'certificatetransparency']
-          for key in (set(os.environ.data.keys()) &
-                          {'FINGERPRINT', 'LOG_URI','CERT_TYPE', 'ISSUER_DN', 'SERIAL',
-                           'SUBJECT_DN', 'NOT_AFTER_UNIXTIME', 'NOT_BEFORE_UNIXTIME',
-                           'PUBKEY_HASH', 'CERT_PARSEABLE','ENTRY_INDEX'}):
-              msg.details[key.lower().translate(None,'_')] = os.environ.data[key]
-          msg.details['dnsnames'] = [x.strip() for x
-                                      in os.environ.data['DNS_NAMES'].split(',')]
+          for key in (set(os.environ.keys()) &
+                      {'FINGERPRINT', 'LOG_URI','CERT_TYPE', 'ISSUER_DN', 'SERIAL',
+                       'SUBJECT_DN', 'NOT_AFTER_UNIXTIME', 'NOT_BEFORE_UNIXTIME',
+                       'PUBKEY_HASH', 'CERT_PARSEABLE','ENTRY_INDEX'}):
+              msg.details[key.lower().translate({'_': ''})] = os.environ[key]
+          msg.details['dnsnames'] = [x.strip() for x in os.environ['DNS_NAMES'].split(',')]
           with open('/home/centos/.certspotter/watchlist') as f:
               watchlist = f.read().splitlines()
-          msg.details['watched_dnsnames'] = [
-              dnsname for dnsname in msg.details['dnsnames']
+          msg.details['watched_dnsnames'] = [dnsname for dnsname in msg.details['dnsnames']
               if (dnsname in watchlist)
-              or len(
+                 or len(
                   [watchname for watchname in watchlist
                    if watchname[:1] == '.'
                    and (dnsname.endswith(watchname)
@@ -186,7 +195,7 @@ Resources:
           msg.send()
           EOF
           touch /etc/cron.d/certspotter
-          /usr/bin/cfn-signal '${WaitConditionHandle}' 2>&1 >> /var/log/initial_user-data.log
+          /usr/local/bin/cfn-signal '${WaitConditionHandle}' 2>&1 >> /var/log/initial_user-data.log
   WaitConditionHandle:
     Type: AWS::CloudFormation::WaitConditionHandle
   WaitCondition:
