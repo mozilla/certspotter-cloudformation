@@ -13,12 +13,12 @@ This installation of certspotter will send reports to
 Verbose logs from the past 4 weeks of hourly certspotter runs can be found in
 `/var/log/certspotter.log` and the other weekly logrotated files
 
-## send_to_mozdef.py
+## `send_to_mozdef.py`
 
 This CloudFormation creates a simple python tool called `send_to_mozdef.py`
 which sends certificates discovered by certspotter to MozDef.
 
-### Experimenting with send_to_mozdef.py
+### Experimenting with `send_to_mozdef.py`
 
 To display the message before sending it to MozDef, change the final
 `msg.send()` command to something which prints the message first like this
@@ -26,6 +26,11 @@ To display the message before sending it to MozDef, change the final
     msg.construct()
     print(json.dumps(msg._sendlog))
     msg.send_sqs()
+
+### Testing `send_to_mozdef.py`
+
+The `test_send_to_mozdef.bash` script will set example environment variables
+and run `send_to_mozdef.py`
 
 ## Deploying
 
