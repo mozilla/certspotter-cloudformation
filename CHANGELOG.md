@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cases where the lock file is left over, maps to no running process, but still prevents new runs from starting
 
 ## [3.0.0] - 2019-03-08
-521500e179b7dd0d68a16322c8e7f9cf95d4d867
+
 ### Added
 - Check for lock file to prevent concurrent runs
 - Logrotation
@@ -34,18 +34,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Logging
 
 ## [2.1.0] - 2017-01-06
-d3ae4cb2f50dcfca97e39d3313a771164be1657e
+
 ### Added
 - Support for an Elastic IP
 - Support for an S3 hosted watchlist file
 - Add a MozDef event field of only the SAN DNS names which are being watched
 
 ## [2.0.0] - 2016-08-12
-6be3679de7360c09306079b1be66474856664733
+
 ### Changed
 - From sending results in email over SES to sending MozDef events over SQS
 
 ## [1.0.0] - 2016-08-10
+
 ### Added
 - Initial commit
 
