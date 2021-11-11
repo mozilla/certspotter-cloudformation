@@ -1,8 +1,8 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: SSLMate Cert Spotter monitor of the Certificate Transparency logs, emitting events to MozDef
+Description: SSLMate Cert Spotter monitor of the Certificate Transparency logs, emitting events to SQS
 Metadata:
   SourceCode: https://github.com/mozilla/certspotter-cloudformation
-  Version: 3.1.0
+  Version: 4.0.0
   Todo1: Convert to AWS lambda function
   Todo2: Add heartbeat/watchdog to detect if the cronjob stops working
 Parameters:
@@ -19,8 +19,15 @@ Parameters:
     Description: The AWS account ID that contains the SQS queue if that queue is not
       in the local account or the local account's account id if the SQS queue is local
     Type: String
+  DynamoDBTableName:
+    Description: The name of the DynamoDB table to store matching cert records in
+    Type: String
+    Default: CertificateTransparencyMatches
+  DynamoDBTableRegion:
+    Description: The region of the DynamoDB table
+    Type: String
   WatchListURI:
-    Description: An s3 URL to a JSON document containing the list of domains
+    Description: An S3 URL to a JSON document containing the list of domains
       under a 'domains' key
     Type: String
     ConstraintDescription: An s3 URL beginnging with s3://
@@ -34,6 +41,14 @@ Parameters:
       want to associate with this new instance
     Type: String
     Default: ''
+  StartFromEndOfCTLogs:
+    Description: 'Should certspotter start from the current end of the certificate transparency logs? "true" or "false" (Default : true)'
+    Type: String
+    AllowedValues:
+      - true
+      - false
+    ConstraintDescription: must be either "true" or "false"
+    Default: true
 Conditions:
   AssociateEIP: !Not [ !Equals [ !Ref 'EIPAllocationId', '' ] ]
 Mappings:
@@ -101,7 +116,7 @@ Resources:
             Action:
               - sts:AssumeRole
       Policies:
-        - PolicyName: SendSQSMessageToMozDef
+        - PolicyName: SendSQSMessage
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -110,7 +125,16 @@ Resources:
                   - sqs:Send*
                   - sqs:GetQueueUrl
                 Resource: !Join [ '', [ 'arn:aws:sqs:', !Ref 'SQSRegion', ':', !Ref 'SQSAccountId', ':', !Ref 'SQSQueueName', '*' ] ]
-        - PolicyName: ReadInfosecInternalData
+        - PolicyName: StoreRecordInDynamoDB
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:DescribeTable
+                  - dynamodb:PutItem
+                Resource: !Join [ '', [ 'arn:aws:dynamodb:', !Ref 'DynamoDBTableRegion', ':', !Ref 'AWS::AccountId', ':table/', !Ref 'DynamoDBTableName' ] ]
+        - PolicyName: ReadS3Watchlist
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -146,7 +170,7 @@ Resources:
           for i in {1..3}; do /bin/dnf --assumeyes install python39-pip python39-wheel && /bin/pip3.9 install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz 2>&1 >> /var/log/initial_user-data.log && break || sleep 10; done
           install --owner=centos --group=centos --mode=0644 /dev/null /var/log/certspotter.log
           cat << 'EOF' > /etc/cron.d/certspotter
-          ${CronSchedule} centos test -d "/proc/$(test -e /home/centos/.certspotter/lock && cat /home/centos/.certspotter/lock || echo nolock)" || ( rm --force --verbose /home/centos/.certspotter/lock && echo "$(date) Starting cron initiated run" && /home/centos/gocode/bin/certspotter -verbose -script /home/centos/send_to_mozdef.py && echo "$(date) Finished cron initiated run" ) >> /var/log/certspotter.log 2>&1
+          ${CronSchedule} centos test -d "/proc/$(test -e /home/centos/.certspotter/lock && cat /home/centos/.certspotter/lock || echo nolock)" || ( rm --force --verbose /home/centos/.certspotter/lock && echo "$(date) Starting cron initiated run" && /home/centos/gocode/bin/certspotter -verbose -script /home/centos/send_to_sqs.py && echo "$(date) Finished cron initiated run" ) >> /var/log/certspotter.log 2>&1
           EOF
           cat << 'EOF' > /etc/logrotate.d/certspotter
           /var/log/certspotter.log {
@@ -156,43 +180,57 @@ Resources:
           EOF
           dnf --assumeyes install epel-release
           dnf --assumeyes install golang git jq
-          pip3.9 install mozdef_client awscli
+          pip3.9 install awscli boto3
           install --owner=centos --group=centos --directory /home/centos/gocode
           install --owner=centos --group=centos --directory /home/centos/.certspotter
           install --owner=centos --group=centos --mode=0644 /dev/null /home/centos/.certspotter/watchlist
           /usr/local/bin/aws s3 cp --quiet ${WatchListURI} /dev/stdout | jq -r '.domains|map("."+.)|.[]' > /home/centos/.certspotter/watchlist
-          runuser --login centos -c 'GOPATH=/home/centos/gocode /usr/bin/go get software.sslmate.com/src/certspotter/cmd/certspotter'
-          install --owner=centos --group=centos --mode=0755 /dev/null /home/centos/send_to_mozdef.py
-          install --owner=centos --group=centos --mode=0644 /dev/null /home/centos/sqs_info.txt
-          echo -n "${SQSRegion},${SQSQueueName},${SQSAccountId}" > /home/centos/sqs_info.txt
-          cat << 'EOF' > /home/centos/send_to_mozdef.py
+          runuser --login centos -c 'GOPATH=/home/centos/gocode /usr/bin/go install software.sslmate.com/src/certspotter/cmd/certspotter@latest'
+          install --owner=centos --group=centos --mode=0755 /dev/null /home/centos/send_to_sqs.py
+          install --owner=centos --group=centos --mode=0644 /dev/null /home/centos/certspotter_config.txt
+          echo -n "${SQSRegion},${SQSQueueName},${SQSAccountId},${DynamoDBTableName},${DynamoDBTableRegion}" > /home/centos/certspotter_config.txt
+          if [ "${StartFromEndOfCTLogs}" = "true" ]; then
+              while ! runuser --login centos -c '/home/centos/gocode/bin/certspotter -verbose -start_at_end'; do
+                  echo "Some of the initial CT log fetches failed due to ratelimiting. Trying again."
+                  sleep 1
+              done
+              echo "Initial certspotter index pointed to the end of current CT logs"
+          fi
+          cat << 'EOF' > /home/centos/send_to_sqs.py
           #!/usr/bin/env python3
-          import mozdef_client, os
-          with open('/home/centos/sqs_info.txt') as f:
+          import os, json, boto3
+          base_dir = '/home/centos'
+          with open(f'{base_dir}/certspotter_config.txt') as f:
               ARGS = [x.strip() for x in f.read().split(',')]
-          msg = mozdef_client.MozDefEvent('https://127.0.0.1/this/url/is/not/used')
-          msg.summary = 'New certificate detected in Certificate Transparency logs'
-          msg.tags = ['tls', 'certificatetransparency']
-          for key in (set(os.environ.keys()) &
-                      {'FINGERPRINT', 'LOG_URI','CERT_TYPE', 'ISSUER_DN', 'SERIAL',
-                       'SUBJECT_DN', 'NOT_AFTER_UNIXTIME', 'NOT_BEFORE_UNIXTIME',
-                       'PUBKEY_HASH', 'CERT_PARSEABLE','ENTRY_INDEX'}):
-              msg.details[key.lower().translate({'_': ''})] = os.environ[key]
-          msg.details['dnsnames'] = [x.strip() for x in os.environ['DNS_NAMES'].split(',')]
-          with open('/home/centos/.certspotter/watchlist') as f:
+
+          data = {}
+          fields = {
+              'FINGERPRINT', 'LOG_URI','CERT_TYPE', 'ISSUER_DN', 'SERIAL', 'SUBJECT_DN',
+              'NOT_AFTER_UNIXTIME', 'NOT_BEFORE_UNIXTIME', 'PUBKEY_HASH', 'CERT_PARSEABLE','ENTRY_INDEX'}
+          for key in (set(os.environ.keys()) & fields):
+              data[key.lower().translate({'_': ''})] = os.environ[key]
+          data['dnsnames'] = [x.strip() for x in os.environ['DNS_NAMES'].split(',')]
+          with open(f'{base_dir}/.certspotter/watchlist') as f:
               watchlist = f.read().splitlines()
-          msg.details['watched_dnsnames'] = [dnsname for dnsname in msg.details['dnsnames']
-              if (dnsname in watchlist)
-                 or len(
-                  [watchname for watchname in watchlist
-                   if watchname[:1] == '.'
-                   and (dnsname.endswith(watchname)
-                        or dnsname == watchname.lstrip('.'))]) > 0]
-          msg.set_send_to_sqs(True)
-          msg.set_sqs_region(ARGS[0])
-          msg.set_sqs_queue_name(ARGS[1])
-          msg.set_sqs_aws_account_id(ARGS[2])
-          msg.send()
+
+          def in_watchlist(name, watchlist):
+              matching_names = [watchname for watchname in watchlist if watchname[:1] == '.' and (name.endswith(watchname) or name == watchname.lstrip('.'))]
+              return (name in watchlist) or matching_names
+
+          data['watched_dnsnames'] = [dnsname for dnsname in data['dnsnames'] if in_watchlist(dnsname, watchlist)]
+          data['summary'] = f"New certificate{'s' if len(data['watched_dnsnames']) > 1 else ''} in CT logs for {', '.join(data['watched_dnsnames'])}"
+
+          client = boto3.client('sqs', region_name=ARGS[0])
+          queue_url = client.get_queue_url(QueueName=ARGS[1], QueueOwnerAWSAccountId=ARGS[2])['QueueUrl']
+          client.send_message(QueueUrl=queue_url, MessageBody=json.dumps(data, sort_keys=True))
+          dynamodb = boto3.resource('dynamodb', region_name=ARGS[4])
+          table = dynamodb.Table(ARGS[3])
+          table.load()
+          record_id = f"{data['issuer_dn']}, {data['serial']}"
+          table.put_item(Item={
+              'id': record_id,
+              'date': int(data['not_before_unixtime']),
+              'record': json.dumps(data, sort_keys=True)})
           EOF
           touch /etc/cron.d/certspotter
           /usr/local/bin/cfn-signal '${WaitConditionHandle}' 2>&1 >> /var/log/initial_user-data.log

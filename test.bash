@@ -13,34 +13,40 @@ export PUBKEY_HASH="6d60a43600bce65272bc041ee5c6755268c2fb2aa3c071bf11c9fc376cc9
 export CERT_PARSEABLE="yes"
 export NOT_AFTER_UNIXTIME="1557316800"
 
-python send_to_mozdef.py
+python3 send_to_sqs.py
 
 
-# #!/usr/bin/env python
-# import mozdef_client, os
-# ARGS = ['us-west-1','infosec_mozdef_events','656532927350']
-# msg = mozdef_client.MozDefEvent('https://127.0.0.1/this/url/is/not/used')
-# msg.summary = 'New certificate detected in Certificate Transparency logs'
-# msg.tags = ['tls', 'certificatetransparency']
-# for key in (set(os.environ.data.keys()) &
-#                 {'FINGERPRINT', 'LOG_URI','CERT_TYPE', 'ISSUER_DN', 'SERIAL',
-#                  'SUBJECT_DN', 'NOT_AFTER_UNIXTIME', 'NOT_BEFORE_UNIXTIME',
-#                  'PUBKEY_HASH', 'CERT_PARSEABLE','ENTRY_INDEX'}):
-#     msg.details[key.lower().translate(None,'_')] = os.environ.data[key]
-# msg.details['dnsnames'] = [x.strip() for x
-#                             in os.environ.data['DNS_NAMES'].split(',')]
-# with open('/home/centos/.certspotter/watchlist') as f:
+# #!/usr/bin/env python3
+# import os, json, boto3
+# base_dir = '/home/centos'
+# with open(f'{base_dir}/certspotter_config.txt') as f:
+#     ARGS = [x.strip() for x in f.read().split(',')]
+#
+# data = {}
+# fields = {
+#     'FINGERPRINT', 'LOG_URI','CERT_TYPE', 'ISSUER_DN', 'SERIAL', 'SUBJECT_DN',
+#     'NOT_AFTER_UNIXTIME', 'NOT_BEFORE_UNIXTIME', 'PUBKEY_HASH', 'CERT_PARSEABLE','ENTRY_INDEX'}
+# for key in (set(os.environ.keys()) & fields):
+#     data[key.lower().translate({'_': ''})] = os.environ[key]
+# data['dnsnames'] = [x.strip() for x in os.environ['DNS_NAMES'].split(',')]
+# with open(f'{base_dir}/.certspotter/watchlist') as f:
 #     watchlist = f.read().splitlines()
-# msg.details['watched_dnsnames'] = [
-#     dnsname for dnsname in msg.details['dnsnames']
-#     if (dnsname in watchlist)
-#     or len(
-#         [watchname for watchname in watchlist
-#          if watchname[:1] == '.'
-#          and (dnsname.endswith(watchname)
-#               or dnsname == watchname.lstrip('.'))]) > 0]
-# msg.set_send_to_sqs(True)
-# msg.set_sqs_region(ARGS[0])
-# msg.set_sqs_queue_name(ARGS[1])
-# msg.set_sqs_aws_account_id(ARGS[2])
-# msg.send()
+#
+# def in_watchlist(name, watchlist):
+#     matching_names = [watchname for watchname in watchlist if watchname[:1] == '.' and (name.endswith(watchname) or name == watchname.lstrip('.'))]
+#     return (name in watchlist) or matching_names
+#
+# data['watched_dnsnames'] = [dnsname for dnsname in data['dnsnames'] if in_watchlist(dnsname, watchlist)]
+# data['summary'] = f"New certificate{'s' if len(data['watched_dnsnames']) > 1 else ''} in CT logs for {', '.join(data['watched_dnsnames'])}"
+#
+# client = boto3.client('sqs', region_name=ARGS[0])
+# queue_url = client.get_queue_url(QueueName=ARGS[1], QueueOwnerAWSAccountId=ARGS[2])['QueueUrl']
+# client.send_message(QueueUrl=queue_url, MessageBody=json.dumps(data, sort_keys=True))
+# dynamodb = boto3.resource('dynamodb', region_name=ARGS[4])
+# table = dynamodb.Table(ARGS[3])
+# table.load()
+# record_id = f"{data['issuer_dn']}, {data['serial']}"
+# table.put_item(Item={
+#     'id': record_id,
+#     'date': int(data['not_before_unixtime']),
+#     'record': json.dumps(data, sort_keys=True)})
