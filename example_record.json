@@ -1,0 +1,20 @@
+{
+  "cert_parseable": "yes",
+  "cert_type": "precert",
+  "dnsnames": [
+    "certspottertest.security.allizom.org"
+  ],
+  "entry_index": "98996781",
+  "fingerprint": "74f31fc5df4d3b62ad2540a4eb2a19511882d802bc8a6cca3fdd7dae812bb5d4",
+  "issuer_dn": "C=US, O=Amazon, OU=Server CA 1B, CN=Amazon",
+  "log_uri": "https://oak.ct.letsencrypt.org/2022/",
+  "not_after_unixtime": "1670716799",
+  "not_before_unixtime": "1636588800",
+  "pubkey_hash": "716b422e02f6eab60bd2e4d64c03f7b058b7ff0a081d81d9edf3261db6ff9a2a",
+  "serial": "447c4835c925210471e44277fdb8988",
+  "subject_dn": "CN=certspottertest.security.allizom.org",
+  "summary": "New certificate in CT logs for certspottertest.security.allizom.org",
+  "watched_dnsnames": [
+    "certspottertest.security.allizom.org"
+  ]
+}

@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2021-11-10
+
+### Changed
+- output from a [MozDef](https://github.com/mozilla/MozDef) format to a more 
+  generic event format
+- the "summary" field format to contain the matching domain names
+
+### Added
+- recording of every matching certificate to a DynamoDB table
+  - This requires
+    - creating the DynamoDB table
+    - setting the DynamoDBTableName and DynamoDBTableRegion CloudFormation
+      parameters
+- CloudFormation template to create a DynamoDB table to store matching certificate
+  transparency records
+
 ## [3.1.0] - 2021-09-09
 
 ### Changed
@@ -50,7 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial commit
 
-[Unreleased]: https://github.com/mozilla/certspotter-cloudformation/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/mozilla/certspotter-cloudformation/compare/v4.0.0...HEAD
+[4.0.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v3.1.0...v4.0.0
 [3.1.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v2.1.0...v3.0.0
 [2.1.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v2.0.0...v2.1.0

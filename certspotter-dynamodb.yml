@@ -1,0 +1,29 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: DynamoDB table for certspotter to record matching certificate transparency records
+Metadata:
+  SourceCode: https://github.com/mozilla/certspotter-cloudformation
+  Version: 4.0.0
+Parameters:
+  DynamoDBTableName:
+    Description: The name of the DynamoDB table to store matching cert records in. This must match the DynamoDBTableName in the certspotter stack.
+    Type: String
+    Default: CertificateTransparencyMatches
+Resources:
+  DynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref 'DynamoDBTableName'
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: N
+      KeySchema:
+        - KeyType: HASH
+          AttributeName: id
+        - KeyType: RANGE
+          AttributeName: date
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
