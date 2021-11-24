@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0] - 2021-11-10
+
+### Changed
+- output from the raw format certspotter provides to a 
+  [Splunk certificate format](https://docs.splunk.com/Documentation/CIM/4.20.2/User/Certificates)
+  which is not a backwards compatible change
+
+### Added
+- log file `certificates_matched.log` recording each matched certificate
+- logic to accommodate a missing SQS queue or DynamoDB
+
 ## [4.0.0] - 2021-11-10
 
 ### Changed
@@ -66,7 +77,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial commit
 
-[Unreleased]: https://github.com/mozilla/certspotter-cloudformation/compare/v4.0.0...HEAD
+[Unreleased]: https://github.com/mozilla/certspotter-cloudformation/compare/v5.0.0...HEAD
+[5.0.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v4.0.0...v5.0.0
 [4.0.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v3.1.0...v4.0.0
 [3.1.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v2.1.0...v3.0.0

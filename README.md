@@ -4,9 +4,10 @@ This [AWS CloudFormation](https://aws.amazon.com/cloudformation/) template,
 [`certspotter-sqs.yml`](certspotter-sqs.yml) will create a hosted version of the 
 [SSLMate certspotter](https://github.com/SSLMate/certspotter) app.
 
-This installation of certspotter will 
+This installation of certspotter will
+* create an events in the [Splunk certificate format](https://docs.splunk.com/Documentation/CIM/4.20.2/User/Certificates)
 * send events to an [AWS Message Queuing Service (SQS)](https://aws.amazon.com/sqs/)
-  queue for every matching certificate. These reports can then be consumed by a SIEM.
+  queue for every matching certificate. These reports can then be consumed by a SIEM (e.g. Splunk).
 * store all matching certificate transparency events in a DynamoDB 
 
 ## Installation
@@ -35,6 +36,8 @@ Verbose logs from the past 4 weeks of certspotter runs can be found in
 start and end of runs can be found with
 
     grep "cron initiated run" /var/log/certspotter.log
+
+A log of every matched certificate is kept in `/home/centos/certificates_matched.log`
 
 ## Files
 
