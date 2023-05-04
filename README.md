@@ -22,7 +22,6 @@ parameters let you set
   records to
 * the S3 URL of the watchlist to use which contains the domains that you want to
   filter for
-* the cron schedule for how often to run certspotter
 * whether or not to start from the end of the certificate transparency logs.
   Starting from the end of the logs will allow certspotter to complete quickly.
   Starting from the beginning will require a very long time to process all of
@@ -32,10 +31,7 @@ parameters let you set
 ## Logging
 
 Verbose logs from the past 4 weeks of certspotter runs can be found in
-`/var/log/certspotter.log` along with the other weekly logrotated files. The 
-start and end of runs can be found with
-
-    grep "cron initiated run" /var/log/certspotter.log
+`/var/log/messages` along with the other logrotated files.
 
 A log of every matched certificate is kept in `/home/centos/certificates_matched.log`
 
@@ -74,10 +70,12 @@ To display the message before sending it to SQS, change the
 The `test.bash` script will set example environment variables and run 
 `send_to_sqs.py`
 
-### `certspotter-ses.yml`
+### `deprecated/certspotter-ses.yml`
 
-This CloudFormation template deploys certspotter configured to emit matching
-domain names via email using SES.
+This CloudFormation template deployed certspotter configured to emit matching
+domain names via email using SES. This file is only here as a guide if you'd like
+to implement this solution as Mozilla doesn't use it. It would need to be updated
+to work with certspotter v0.15.0 or newer as it doesn't currently work.
 
 ## Deploying
 

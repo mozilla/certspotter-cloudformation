@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: SSLMate Cert Spotter monitor of the Certificate Transparency logs, emitting events to SQS
 Metadata:
   SourceCode: https://github.com/mozilla/certspotter-cloudformation
-  Version: 5.0.0
+  Version: 6.0.0
   Todo1: Convert to AWS lambda function
   Todo2: Add heartbeat/watchdog to detect if the cronjob stops working
 Parameters:
@@ -30,12 +30,8 @@ Parameters:
     Description: An S3 URL to a JSON document containing the list of domains
       under a 'domains' key
     Type: String
-    ConstraintDescription: An s3 URL beginnging with s3://
+    ConstraintDescription: An S3 URL beginning with s3://
     AllowedPattern: '^s3://.*'
-  CronSchedule:
-    Description: 'The 5 field crontab schedule for running certspotter (Default : Every 15 minutes)'
-    Type: String
-    Default: '*/15 * * * *'
   EIPAllocationId:
     Description: The optional Allocation ID of the already existing Elastic IP you
       want to associate with this new instance
@@ -53,46 +49,39 @@ Conditions:
   AssociateEIP: !Not [ !Equals [ !Ref 'EIPAllocationId', '' ] ]
 Mappings:
   RegionMap:
-    us-east-2:
-      CentOS8StreamX8664EBSHVM: ami-045b0a05944af45c1
-    us-east-1:
-      CentOS8StreamX8664EBSHVM: ami-0ee70e88eed976a1b
-    us-west-1:
-      CentOS8StreamX8664EBSHVM: ami-006f59adcb98c236f
-    us-west-2:
-      CentOS8StreamX8664EBSHVM: ami-056c679fab9e48d8a
-    af-south-1:
-      CentOS8StreamX8664EBSHVM: ami-01d7c2b5c4fc0218a
-    ap-east-1:
-      CentOS8StreamX8664EBSHVM: ami-0b37ca06a565ba470
-    ap-south-1:
-      CentOS8StreamX8664EBSHVM: ami-0967a8b99f328dfee
     ap-northeast-1:
-      CentOS8StreamX8664EBSHVM: ami-06ee905d0566e92e7
+      CentOS8Streamx8664EBSHVM: ami-09d601e0cf25901b0
     ap-northeast-2:
-      CentOS8StreamX8664EBSHVM: ami-054d85b8af5b91956
+      CentOS8Streamx8664EBSHVM: ami-07de343a1f1f28c13
+    ap-northeast-3: {}
+    ap-south-1:
+      CentOS8Streamx8664EBSHVM: ami-0b7b39ff51f3dad24
     ap-southeast-1:
-      CentOS8StreamX8664EBSHVM: ami-092422d03e2e1e43f
+      CentOS8Streamx8664EBSHVM: ami-04bc8877d84c7b0f0
     ap-southeast-2:
-      CentOS8StreamX8664EBSHVM: ami-0270da940c59823a1
+      CentOS8Streamx8664EBSHVM: ami-07c93ed8c0fd61a22
     ca-central-1:
-      CentOS8StreamX8664EBSHVM: ami-0c43193f9aa2a22db
+      CentOS8Streamx8664EBSHVM: ami-0b2ea49c80f5eea36
     eu-central-1:
-      CentOS8StreamX8664EBSHVM: ami-071096749fda40d3f
-    eu-west-1:
-      CentOS8StreamX8664EBSHVM: ami-0e0669c0b39d3a79f
-    eu-west-2:
-      CentOS8StreamX8664EBSHVM: ami-0418c980c296f36ce
-    eu-west-3:
-      CentOS8StreamX8664EBSHVM: ami-068ebc10e14d9a504
-    eu-south-1:
-      CentOS8StreamX8664EBSHVM: ami-015495d931a04c6a3
+      CentOS8Streamx8664EBSHVM: ami-00c7d8758693386f9
     eu-north-1:
-      CentOS8StreamX8664EBSHVM: ami-0ab62823bc41fa10a
-    me-south-1:
-      CentOS8StreamX8664EBSHVM: ami-08922e5d0a577ac38
+      CentOS8Streamx8664EBSHVM: ami-0ba80a09a6f5d7c9d
+    eu-west-1:
+      CentOS8Streamx8664EBSHVM: ami-03558b9c50f008efb
+    eu-west-2:
+      CentOS8Streamx8664EBSHVM: ami-00c860ed641e6ff27
+    eu-west-3:
+      CentOS8Streamx8664EBSHVM: ami-07f074dc2ecbc769b
     sa-east-1:
-      CentOS8StreamX8664EBSHVM: ami-0be416330b68d16f4
+      CentOS8Streamx8664EBSHVM: ami-02ab2f892d2637083
+    us-east-1:
+      CentOS8Streamx8664EBSHVM: ami-0add55cf997006f64
+    us-east-2:
+      CentOS8Streamx8664EBSHVM: ami-0ffbdee6ae3169e6c
+    us-west-1:
+      CentOS8Streamx8664EBSHVM: ami-09840074796149b18
+    us-west-2:
+      CentOS8Streamx8664EBSHVM: ami-068a090f464518265
 Resources:
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -168,38 +157,56 @@ Resources:
         Fn::Base64: !Sub |
           #!/bin/bash -ex
           for i in {1..3}; do /bin/dnf --assumeyes install python39-pip python39-wheel && /bin/pip3.9 install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz 2>&1 >> /var/log/initial_user-data.log && break || sleep 10; done
-          install --owner=centos --group=centos --mode=0644 /dev/null /var/log/certspotter.log
-          cat << 'EOF' > /etc/cron.d/certspotter
-          ${CronSchedule} centos test -d "/proc/$(test -e /home/centos/.certspotter/lock && cat /home/centos/.certspotter/lock || echo nolock)" || ( rm --force --verbose /home/centos/.certspotter/lock && echo "$(date) Starting cron initiated run" && /home/centos/gocode/bin/certspotter -verbose -script /home/centos/send_to_sqs.py && echo "$(date) Finished cron initiated run" ) >> /var/log/certspotter.log 2>&1
+          useradd --comment "Certspotter Daemon" --create-home certspotter
+          cat << 'EOF' > /etc/systemd/system/certspotter.service
+          [Unit]
+          Description=Certificate Transparency Log Monitor
+          Documentation=man:certspotter(8)
+          After=network-online.target
+          Wants=network-online.target
+          # ConditionPathExists=/etc/certspotter/watchlist
+          
+          [Service]
+          Type=simple
+          User=certspotter
+          Group=certspotter
+          # ExecCondition=grep -q -E -v '^\s*(#|$)' /etc/certspotter/watchlist
+          # Environment=CERTSPOTTER_CONFIG_DIR=/etc/certspotter CERTSPOTTER_STATE_DIR=/var/cache/certspotter
+          ExecStart=/home/certspotter/gocode/bin/certspotter -verbose -script /home/certspotter/send_to_sqs.py
+          #ConfigurationDirectory=certspotter
+          #CacheDirectory=certspotter
+          # not strict, because we want to allow some flexibility to hooks
+          ProtectSystem=full
+          
+          [Install]
+          WantedBy=multi-user.target
           EOF
-          cat << 'EOF' > /etc/logrotate.d/certspotter
-          /var/log/certspotter.log {
-              missingok
-              create 0644 centos centos
-          }
-          EOF
+          restorecon /etc/systemd/system/certspotter.service
           dnf --assumeyes install epel-release
           dnf --assumeyes install golang git jq
           pip3.9 install awscli boto3
-          install --owner=centos --group=centos --directory /home/centos/gocode
-          install --owner=centos --group=centos --directory /home/centos/.certspotter
-          install --owner=centos --group=centos --mode=0644 /dev/null /home/centos/.certspotter/watchlist
-          /usr/local/bin/aws s3 cp --quiet ${WatchListURI} /dev/stdout | jq -r '.domains|map("."+.)|.[]' > /home/centos/.certspotter/watchlist
-          runuser --login centos -c 'GOPATH=/home/centos/gocode /usr/bin/go install software.sslmate.com/src/certspotter/cmd/certspotter@latest'
-          install --owner=centos --group=centos --mode=0755 /dev/null /home/centos/send_to_sqs.py
-          install --owner=centos --group=centos --mode=0644 /dev/null /home/centos/certspotter_config.txt
-          echo -n "${SQSRegion},${SQSQueueName},${SQSAccountId},${DynamoDBTableName},${DynamoDBTableRegion}" > /home/centos/certspotter_config.txt
+          install --owner=certspotter --group=certspotter --directory /home/certspotter/gocode
+          install --owner=certspotter --group=certspotter --directory /home/certspotter/.certspotter
+          install --owner=certspotter --group=certspotter --mode=0644 /dev/null /home/certspotter/.certspotter/watchlist
+          /usr/local/bin/aws s3 cp --quiet ${WatchListURI} /dev/stdout | jq -r '.domains|map("."+.)|.[]' > /home/certspotter/.certspotter/watchlist
+          runuser --login certspotter -c 'GOPATH=/home/certspotter/gocode /usr/bin/go install software.sslmate.com/src/certspotter/cmd/certspotter@latest'
+          semanage fcontext --add --type bin_t /home/certspotter/gocode/bin/certspotter
+          chcon --verbose --user system_u --type bin_t /home/certspotter/gocode/bin/certspotter
+          restorecon -v /home/certspotter/gocode/bin/certspotter
+          install --owner=certspotter --group=certspotter --mode=0755 /dev/null /home/certspotter/send_to_sqs.py
+          install --owner=certspotter --group=certspotter --mode=0644 /dev/null /home/certspotter/certspotter_config.txt
+          echo -n "${SQSRegion},${SQSQueueName},${SQSAccountId},${DynamoDBTableName},${DynamoDBTableRegion}" > /home/certspotter/certspotter_config.txt
           if [ "${StartFromEndOfCTLogs}" = "true" ]; then
-              while ! runuser --login centos -c '/home/centos/gocode/bin/certspotter -verbose -start_at_end'; do
+              while ! runuser --login certspotter -c '/home/certspotter/gocode/bin/certspotter -verbose -start_at_end'; do
                   echo "Some of the initial CT log fetches failed due to ratelimiting. Trying again."
                   sleep 1
               done
               echo "Initial certspotter index pointed to the end of current CT logs"
           fi
-          cat << 'EOF' > /home/centos/send_to_sqs.py
+          cat << 'EOF' > /home/certspotter/send_to_sqs.py
           #!/usr/bin/env python3
           import os, json, datetime, boto3
-          base_dir = '/home/centos'
+          base_dir = '/home/certspotter'
           with open(f'{base_dir}/certspotter_config.txt') as f:
               ARGS = [x.strip() for x in f.read().split(',')]
 
@@ -212,14 +219,15 @@ Resources:
               'NOT_AFTER_UNIXTIME': 'ssl_end_time',
               'NOT_BEFORE_UNIXTIME': 'ssl_start_time',
               'LOG_URI': 'log_uri',
-              'CERT_TYPE': 'cert_type',
               'PUBKEY_HASH': 'pubkey_hash',
               'CERT_PARSEABLE': 'cert_parseable',
               'ENTRY_INDEX': 'entry_index',
           }
           for key in (set(os.environ.keys()) & field_map.keys()):
               data[field_map[key]] = os.environ[key]
-          data['dnsnames'] = [x.strip() for x in os.environ['DNS_NAMES'].split(',')]
+          with open(os.environ['JSON_FILENAME']) as f:
+              json_file_data = json.load(f)
+          data['dnsnames'] = json_file_data['dns_names']
           with open(f'{base_dir}/.certspotter/watchlist') as f:
               watchlist = f.read().splitlines()
 
@@ -245,7 +253,7 @@ Resources:
                   'date': int(data['ssl_start_time']),
                   'record': json.dumps(data, sort_keys=True)})
           EOF
-          touch /etc/cron.d/certspotter
+          systemctl daemon-reload && systemctl enable certspotter.service && systemctl start certspotter.service
           /usr/local/bin/cfn-signal '${WaitConditionHandle}' 2>&1 >> /var/log/initial_user-data.log
   WaitConditionHandle:
     Type: AWS::CloudFormation::WaitConditionHandle

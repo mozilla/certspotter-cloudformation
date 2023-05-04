@@ -12,9 +12,58 @@ export NOT_BEFORE_UNIXTIME="1457049600"
 export PUBKEY_HASH="6d60a43600bce65272bc041ee5c6755268c2fb2aa3c071bf11c9fc376cc9aa37"
 export CERT_PARSEABLE="yes"
 export NOT_AFTER_UNIXTIME="1557316800"
-
+export JSON_FILENAME=/tmp/example-certspotter-match-file.json
+cat << 'EOF' > /tmp/example-certspotter-match-file.json
+{
+  "dns_names": [
+    "akamai-san10.exacttarget.com",
+    "image.ml.dot-st.com",
+    "image.e.banksa.com.au",
+    "image.friends.sanrio.co.jp",
+    "image.tmc.bankofamerica.com",
+    "image.e.mozilla.org",
+    "image.email.truhearing.com",
+    "image.mcd.nikon.com",
+    "image.s.lovesick.com",
+    "image.email.hasbro.com",
+    "image.e.debenhams.com",
+    "image.mail.nibc.com",
+    "image.emailing.santanderpb.es",
+    "image.m.harley-davidson.ca",
+    "image.e.amfam.com",
+    "image.mtbemail.com",
+    "image.email.enterprise.com",
+    "image.email.sans.org",
+    "image.ntt-comstore.com",
+    "image.email.randstaddirect.nl",
+    "image.n-mail.nissay.co.jp",
+    "image.email.decathlon.be",
+    "image.email.randstadholding.com",
+    "image.e.kickstarter.com",
+    "image.email.vakantiediscounter.nl",
+    "image.e.plumorganics.com",
+    "image.r.haken.rikunabi.com",
+    "image.r.townwork.net",
+    "image.news.auctionata.com",
+    "image.subscribers.sbs.com.au",
+    "image.secure.castlighthealth.com",
+    "image.email-nationwide.com",
+    "image.inspiration.auctionata.com",
+    "image.notify.auctionata.com",
+    "image.mail.allsports.jp",
+    "image.emails.thewarehouse.co.nz",
+    "image.email.americanfidelity.com",
+    "image.s.boxlunch.com"
+  ]
+  "ip_addresses": [],
+  "not_after": "2024-01-26T03:47:26Z",
+  "not_before": "2023-01-31T03:47:26Z",
+  "pubkey_sha256": "33ac1d9b9e56005ccac045eac2398b3e9dd6b3f5b66ae6260f2d478c7c0d82c8",
+  "tbs_sha256": "2388ee81c6f45cffc73e68a35fa8921e839e20acc9a98e8e6dcaea07cbfbdef8"
+}
+EOF
 python3 send_to_sqs.py
-
+rm /tmp/example-certspotter-match-file.json
 
 # #!/usr/bin/env python3
 # import os, json, datetime, boto3

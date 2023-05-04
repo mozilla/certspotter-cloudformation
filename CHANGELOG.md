@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0] - 2023-05-04
+
+### Changed
+
+- certspotter to run as a systemd service instead of a cron job to accommodate certspotter
+  [v0.15.0](https://github.com/SSLMate/certspotter/blob/master/CHANGELOG.md#v0150-2023-02-08)
+- how DNS names are passed from certspotter to `send_to_sqs.py` from an environment variable
+  to a JSON file to accommodate certspotter [v0.15.0](https://github.com/SSLMate/certspotter/blob/master/CHANGELOG.md#v0150-2023-02-08)
+- the AMI mapping for CentOS 8 Stream to use the newest AMIs
+
+### Removed
+
+- creation of and log rotation of the `/var/log/certspotter.log` file as logs are now sent
+  to syslog via systemd
+- the `cert_type` key in the events created as certspotter no longer supports the field
+  after certspotter [v0.15.0](https://github.com/SSLMate/certspotter/blob/master/CHANGELOG.md#v0150-2023-02-08)
+
 ## [5.0.0] - 2021-11-10
 
 ### Changed
