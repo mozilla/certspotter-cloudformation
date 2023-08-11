@@ -1,6 +1,5 @@
 {
   "cert_parseable": "yes",
-  "cert_type": "precert",
   "dnsnames": [
     "certspottertest.security.allizom.org"
   ],
