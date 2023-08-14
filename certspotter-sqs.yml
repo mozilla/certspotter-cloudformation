@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: SSLMate Cert Spotter monitor of the Certificate Transparency logs, emitting events to SQS
 Metadata:
   SourceCode: https://github.com/mozilla/certspotter-cloudformation
-  Version: 6.0.0
+  Version: 6.0.1
   Todo1: Convert to AWS lambda function
   Todo2: Add heartbeat/watchdog to detect if the cronjob stops working
 Parameters:
@@ -225,6 +225,10 @@ Resources:
           }
           for key in (set(os.environ.keys()) & field_map.keys()):
               data[field_map[key]] = os.environ[key]
+          if 'JSON_FILENAME' not in os.environ:
+              with open(f'{base_dir}/certificates_matched.log', 'a') as f:
+                  f.write(f"{datetime.datetime.now()} : ERROR encountered, missing JSON_FILENAME : {json.dumps(dict(os.environ))}\n")
+              exit(0)
           with open(os.environ['JSON_FILENAME']) as f:
               json_file_data = json.load(f)
           data['dnsnames'] = json_file_data['dns_names']

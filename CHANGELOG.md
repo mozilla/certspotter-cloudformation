@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.1] - 2023-08-11
+
+### Fixed
+
+- handling of cases where certspotter encounters a malformed certificate
+
 ## [6.0.0] - 2023-05-04
 
 ### Changed
@@ -94,7 +100,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial commit
 
-[Unreleased]: https://github.com/mozilla/certspotter-cloudformation/compare/v5.0.0...HEAD
+[Unreleased]: https://github.com/mozilla/certspotter-cloudformation/compare/v6.0.1...HEAD
+[6.0.1]: https://github.com/mozilla/certspotter-cloudformation/compare/v6.0.0...v6.0.1
+[6.0.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v5.0.0...v6.0.0
 [5.0.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v4.0.0...v5.0.0
 [4.0.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v3.1.0...v4.0.0
 [3.1.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v3.0.0...v3.1.0
