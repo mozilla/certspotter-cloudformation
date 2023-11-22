@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.0.0] - 2023-11-22
+
+### Fixed
+
+- the initial run of certspotter with the `start_at_end` argument which didn't work because
+  modern versions of certspotter run as a daemon and don't exit
+- some mistakes in the documentation
+
+### Changed
+
+- the OS from Centos 8 Stream to Ubuntu 22.04
+- location of send_to_sqs.py to hooks.d to follow the new requirement from the certspotter
+  code
+
 ## [6.0.1] - 2023-08-11
 
 ### Fixed
