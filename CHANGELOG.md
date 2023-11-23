@@ -114,7 +114,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial commit
 
-[Unreleased]: https://github.com/mozilla/certspotter-cloudformation/compare/v6.0.1...HEAD
+[Unreleased]: https://github.com/mozilla/certspotter-cloudformation/compare/v7.0.0...HEAD
+[7.0.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v6.0.1...v7.0.0
 [6.0.1]: https://github.com/mozilla/certspotter-cloudformation/compare/v6.0.0...v6.0.1
 [6.0.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v5.0.0...v6.0.0
 [5.0.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v4.0.0...v5.0.0
