@@ -5,16 +5,22 @@ This [AWS CloudFormation](https://aws.amazon.com/cloudformation/) template,
 [SSLMate certspotter](https://github.com/SSLMate/certspotter) app.
 
 This installation of certspotter will
-* create an events in the [Splunk certificate format](https://docs.splunk.com/Documentation/CIM/4.20.2/User/Certificates)
+* create events in the [Splunk certificate format](https://docs.splunk.com/Documentation/CIM/4.20.2/User/Certificates)
 * send events to an [AWS Message Queuing Service (SQS)](https://aws.amazon.com/sqs/)
   queue for every matching certificate. These reports can then be consumed by a SIEM (e.g. Splunk).
-* store all matching certificate transparency events in a DynamoDB 
+* store all matching certificate transparency events in a DynamoDB
 
 ## Installation
 
 Create the DynamoDB to store certificate transparency records in. This can be
 done manually or with the [`certspotter-dynamodb.yml`](certspotter-dynamodb.yml)
 template.
+
+Create an SQS Queue to send new certificate matches to. This can be done with a command like
+
+```shell
+aws sqs create-queue --queue-name CertificateTransparencyMatches
+```
 
 Deploy the `certspotter-sqs.yml` CloudFormation template in AWS. The template
 parameters let you set
@@ -31,9 +37,9 @@ parameters let you set
 ## Logging
 
 Verbose logs from the past 4 weeks of certspotter runs can be found in
-`/var/log/messages` along with the other logrotated files.
+`/var/log/syslog` along with the other logrotated files.
 
-A log of every matched certificate is kept in `/home/centos/certificates_matched.log`
+A log of every matched certificate is kept in `/home/certspotter/certificates_matched.log`
 
 ## Files
 
@@ -79,7 +85,7 @@ to work with certspotter v0.15.0 or newer as it doesn't currently work.
 
 ## Deploying
 
-When updating an existing deployment, try retaining the `/home/centos/.certspotter/certs/`
+When updating an existing deployment, try retaining the `/home/certspotter/.certspotter/certs/`
 directory as it contains a copy of all the certs it finds that match the watchlist
 which might be interesting down the road as well as the current position in all
 the logs which will allow you to pick up from where certspotter last was in the 

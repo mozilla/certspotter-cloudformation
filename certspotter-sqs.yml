@@ -2,30 +2,32 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: SSLMate Cert Spotter monitor of the Certificate Transparency logs, emitting events to SQS
 Metadata:
   SourceCode: https://github.com/mozilla/certspotter-cloudformation
-  Version: 6.0.1
-  Todo1: Convert to AWS lambda function
-  Todo2: Add heartbeat/watchdog to detect if the cronjob stops working
+  Version: 7.0.0
 Parameters:
   SSHKeyName:
     Description: SSH Key Name
     Type: 'AWS::EC2::KeyPair::KeyName'
   SQSRegion:
-    Description: The AWS region containing the target SQS queue
+    Description: The AWS region containing the target SQS queue. Leave blank for the current region.
     Type: String
+    Default: ''
   SQSQueueName:
     Description: The name of the SQS queue to send events to
     Type: String
   SQSAccountId:
     Description: The AWS account ID that contains the SQS queue if that queue is not
-      in the local account or the local account's account id if the SQS queue is local
+      in the local account or the local account's account id if the SQS queue is local. Leave blank
+      for the current account.
     Type: String
+    Default: ''
   DynamoDBTableName:
     Description: The name of the DynamoDB table to store matching cert records in
     Type: String
     Default: CertificateTransparencyMatches
   DynamoDBTableRegion:
-    Description: The region of the DynamoDB table
+    Description: The region of the DynamoDB table. Leave blank for the current region.
     Type: String
+    Default: ''
   WatchListURI:
     Description: An S3 URL to a JSON document containing the list of domains
       under a 'domains' key
@@ -45,43 +47,16 @@ Parameters:
       - false
     ConstraintDescription: must be either "true" or "false"
     Default: true
+  LatestAmiId:
+    Description: The public SSM path to the Ubuntu AMI IDs
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/canonical/ubuntu/server/jammy/stable/current/amd64/hvm/ebs-gp2/ami-id'
+
 Conditions:
   AssociateEIP: !Not [ !Equals [ !Ref 'EIPAllocationId', '' ] ]
-Mappings:
-  RegionMap:
-    ap-northeast-1:
-      CentOS8Streamx8664EBSHVM: ami-09d601e0cf25901b0
-    ap-northeast-2:
-      CentOS8Streamx8664EBSHVM: ami-07de343a1f1f28c13
-    ap-northeast-3: {}
-    ap-south-1:
-      CentOS8Streamx8664EBSHVM: ami-0b7b39ff51f3dad24
-    ap-southeast-1:
-      CentOS8Streamx8664EBSHVM: ami-04bc8877d84c7b0f0
-    ap-southeast-2:
-      CentOS8Streamx8664EBSHVM: ami-07c93ed8c0fd61a22
-    ca-central-1:
-      CentOS8Streamx8664EBSHVM: ami-0b2ea49c80f5eea36
-    eu-central-1:
-      CentOS8Streamx8664EBSHVM: ami-00c7d8758693386f9
-    eu-north-1:
-      CentOS8Streamx8664EBSHVM: ami-0ba80a09a6f5d7c9d
-    eu-west-1:
-      CentOS8Streamx8664EBSHVM: ami-03558b9c50f008efb
-    eu-west-2:
-      CentOS8Streamx8664EBSHVM: ami-00c860ed641e6ff27
-    eu-west-3:
-      CentOS8Streamx8664EBSHVM: ami-07f074dc2ecbc769b
-    sa-east-1:
-      CentOS8Streamx8664EBSHVM: ami-02ab2f892d2637083
-    us-east-1:
-      CentOS8Streamx8664EBSHVM: ami-0add55cf997006f64
-    us-east-2:
-      CentOS8Streamx8664EBSHVM: ami-0ffbdee6ae3169e6c
-    us-west-1:
-      CentOS8Streamx8664EBSHVM: ami-09840074796149b18
-    us-west-2:
-      CentOS8Streamx8664EBSHVM: ami-068a090f464518265
+  BlankSQSRegion: !Equals [ !Ref 'SQSRegion', '' ]
+  BlankSQSAccountId: !Equals [ !Ref 'SQSAccountId', '' ]
+  BlankDynamoDBTableRegion: !Equals [ !Ref 'DynamoDBTableRegion', '' ]
 Resources:
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -113,7 +88,7 @@ Resources:
                 Action:
                   - sqs:Send*
                   - sqs:GetQueueUrl
-                Resource: !Join [ '', [ 'arn:aws:sqs:', !Ref 'SQSRegion', ':', !Ref 'SQSAccountId', ':', !Ref 'SQSQueueName', '*' ] ]
+                Resource: !Join [ '', [ 'arn:aws:sqs:', !If [BlankSQSRegion, !Ref 'AWS::Region', !Ref SQSRegion], ':', !If [BlankSQSAccountId, !Ref 'AWS::AccountId', !Ref SQSAccountId], ':', !Ref 'SQSQueueName', '*' ] ]
         - PolicyName: StoreRecordInDynamoDB
           PolicyDocument:
             Version: 2012-10-17
@@ -122,7 +97,7 @@ Resources:
                 Action:
                   - dynamodb:DescribeTable
                   - dynamodb:PutItem
-                Resource: !Join [ '', [ 'arn:aws:dynamodb:', !Ref 'DynamoDBTableRegion', ':', !Ref 'AWS::AccountId', ':table/', !Ref 'DynamoDBTableName' ] ]
+                Resource: !Join [ '', [ 'arn:aws:dynamodb:', !If [BlankDynamoDBTableRegion, !Ref 'AWS::Region', !Ref DynamoDBTableRegion], ':', !Ref 'AWS::AccountId', ':table/', !Ref 'DynamoDBTableName' ] ]
         - PolicyName: ReadS3Watchlist
           PolicyDocument:
             Version: 2012-10-17
@@ -141,11 +116,18 @@ Resources:
     Properties:
       Roles:
         - !Ref IAMRole
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: IMDSv2Required
+      LaunchTemplateData:
+        MetadataOptions:
+          HttpTokens: required
   Instance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: !FindInMap [ RegionMap, !Ref 'AWS::Region', CentOS8StreamX8664EBSHVM ]
-      InstanceType: t2.micro
+      ImageId: !Ref LatestAmiId
+      InstanceType: c7a.medium
       Tags:
         - Key: Name
           Value: certspotter
@@ -153,57 +135,49 @@ Resources:
       SecurityGroups:
         - !Ref SecurityGroup
       IamInstanceProfile: !Ref InstanceProfile
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash -ex
-          for i in {1..3}; do /bin/dnf --assumeyes install python39-pip python39-wheel && /bin/pip3.9 install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz 2>&1 >> /var/log/initial_user-data.log && break || sleep 10; done
           useradd --comment "Certspotter Daemon" --create-home certspotter
+          for i in {1..3}; do apt update && apt -y install python3-pip git jq && break || sleep 10; done
+          python3 -m pip install --upgrade pip
+          PIP_ROOT_USER_ACTION=ignore /bin/pip3 install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz awscli boto3
           cat << 'EOF' > /etc/systemd/system/certspotter.service
           [Unit]
           Description=Certificate Transparency Log Monitor
           Documentation=man:certspotter(8)
           After=network-online.target
           Wants=network-online.target
-          # ConditionPathExists=/etc/certspotter/watchlist
           
           [Service]
           Type=simple
           User=certspotter
           Group=certspotter
-          # ExecCondition=grep -q -E -v '^\s*(#|$)' /etc/certspotter/watchlist
-          # Environment=CERTSPOTTER_CONFIG_DIR=/etc/certspotter CERTSPOTTER_STATE_DIR=/var/cache/certspotter
-          ExecStart=/home/certspotter/gocode/bin/certspotter -verbose -script /home/certspotter/send_to_sqs.py
-          #ConfigurationDirectory=certspotter
-          #CacheDirectory=certspotter
+          ExecStart=/home/certspotter/gocode/bin/certspotter -verbose
           # not strict, because we want to allow some flexibility to hooks
           ProtectSystem=full
+          Restart=on-failure
           
           [Install]
           WantedBy=multi-user.target
           EOF
-          restorecon /etc/systemd/system/certspotter.service
-          dnf --assumeyes install epel-release
-          dnf --assumeyes install golang git jq
-          pip3.9 install awscli boto3
+          snap disable amazon-ssm-agent
+          wget --no-verbose https://go.dev/dl/go1.21.4.linux-amd64.tar.gz
+          rm -rf /usr/local/go && tar -C /usr/local -xzf go1.21.4.linux-amd64.tar.gz
+          echo "export PATH=$PATH:/usr/local/go/bin" >> /etc/profile
           install --owner=certspotter --group=certspotter --directory /home/certspotter/gocode
           install --owner=certspotter --group=certspotter --directory /home/certspotter/.certspotter
+          install --owner=certspotter --group=certspotter --directory /home/certspotter/.certspotter/hooks.d
           install --owner=certspotter --group=certspotter --mode=0644 /dev/null /home/certspotter/.certspotter/watchlist
           /usr/local/bin/aws s3 cp --quiet ${WatchListURI} /dev/stdout | jq -r '.domains|map("."+.)|.[]' > /home/certspotter/.certspotter/watchlist
-          runuser --login certspotter -c 'GOPATH=/home/certspotter/gocode /usr/bin/go install software.sslmate.com/src/certspotter/cmd/certspotter@latest'
-          semanage fcontext --add --type bin_t /home/certspotter/gocode/bin/certspotter
-          chcon --verbose --user system_u --type bin_t /home/certspotter/gocode/bin/certspotter
-          restorecon -v /home/certspotter/gocode/bin/certspotter
-          install --owner=certspotter --group=certspotter --mode=0755 /dev/null /home/certspotter/send_to_sqs.py
+          runuser --login certspotter -c 'GOPATH=/home/certspotter/gocode /usr/local/go/bin/go install software.sslmate.com/src/certspotter/cmd/certspotter@latest'
+          install --owner=certspotter --group=certspotter --mode=0755 /dev/null /home/certspotter/.certspotter/hooks.d/send_to_sqs.py
           install --owner=certspotter --group=certspotter --mode=0644 /dev/null /home/certspotter/certspotter_config.txt
-          echo -n "${SQSRegion},${SQSQueueName},${SQSAccountId},${DynamoDBTableName},${DynamoDBTableRegion}" > /home/certspotter/certspotter_config.txt
-          if [ "${StartFromEndOfCTLogs}" = "true" ]; then
-              while ! runuser --login certspotter -c '/home/certspotter/gocode/bin/certspotter -verbose -start_at_end'; do
-                  echo "Some of the initial CT log fetches failed due to ratelimiting. Trying again."
-                  sleep 1
-              done
-              echo "Initial certspotter index pointed to the end of current CT logs"
-          fi
-          cat << 'EOF' > /home/certspotter/send_to_sqs.py
+          echo -n "${AWS::Region},${AWS::AccountId},${SQSRegion},${SQSQueueName},${SQSAccountId},${DynamoDBTableName},${DynamoDBTableRegion}" > /home/certspotter/certspotter_config.txt
+          cat << 'EOF' > /home/certspotter/.certspotter/hooks.d/send_to_sqs.py
           #!/usr/bin/env python3
           import os, json, datetime, boto3
           base_dir = '/home/certspotter'
@@ -244,21 +218,30 @@ Resources:
           record_id = f"{data['ssl_issuer']}, {data['ssl_serial']}"
           with open(f'{base_dir}/certificates_matched.log', 'a') as f:
               f.write(f"{datetime.datetime.now()} : {data['summary']} with ID \"{record_id}\"\n")
-          if ARGS[0] and ARGS[1] and ARGS[2]:
-              client = boto3.client('sqs', region_name=ARGS[0])
-              queue_url = client.get_queue_url(QueueName=ARGS[1], QueueOwnerAWSAccountId=ARGS[2])['QueueUrl']
+          ARGS[2] = ARGS[2] if ARGS[2] else ARGS[0]
+          ARGS[4] = ARGS[4] if ARGS[4] else ARGS[1]
+          ARGS[6] = ARGS[6] if ARGS[6] else ARGS[0]
+          if ARGS[2] and ARGS[3] and ARGS[4]:
+              client = boto3.client('sqs', region_name=ARGS[2])
+              queue_url = client.get_queue_url(QueueName=ARGS[3], QueueOwnerAWSAccountId=ARGS[4])['QueueUrl']
               client.send_message(QueueUrl=queue_url, MessageBody=json.dumps(data, sort_keys=True))
-          if ARGS[3] and ARGS[4]:
-              dynamodb = boto3.resource('dynamodb', region_name=ARGS[4])
-              table = dynamodb.Table(ARGS[3])
+          if ARGS[5] and ARGS[6]:
+              dynamodb = boto3.resource('dynamodb', region_name=ARGS[6])
+              table = dynamodb.Table(ARGS[5])
               table.load()
               table.put_item(Item={
                   'id': record_id,
                   'date': int(data['ssl_start_time']),
                   'record': json.dumps(data, sort_keys=True)})
           EOF
+          if [ "${StartFromEndOfCTLogs}" = "true" ]; then
+              set +e
+              runuser --login certspotter -c 'timeout 30 /home/certspotter/gocode/bin/certspotter -verbose -start_at_end'
+              set -e
+              echo "Initial certspotter index pointed to the end of current CT logs"
+          fi
           systemctl daemon-reload && systemctl enable certspotter.service && systemctl start certspotter.service
-          /usr/local/bin/cfn-signal '${WaitConditionHandle}' 2>&1 >> /var/log/initial_user-data.log
+          /usr/local/bin/cfn-signal '${WaitConditionHandle}'
   WaitConditionHandle:
     Type: AWS::CloudFormation::WaitConditionHandle
   WaitCondition:
