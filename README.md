@@ -5,10 +5,10 @@ This [AWS CloudFormation](https://aws.amazon.com/cloudformation/) template,
 [SSLMate certspotter](https://github.com/SSLMate/certspotter) app.
 
 This installation of certspotter will
-* create an events in the [Splunk certificate format](https://docs.splunk.com/Documentation/CIM/4.20.2/User/Certificates)
+* create events in the [Splunk certificate format](https://docs.splunk.com/Documentation/CIM/4.20.2/User/Certificates)
 * send events to an [AWS Message Queuing Service (SQS)](https://aws.amazon.com/sqs/)
   queue for every matching certificate. These reports can then be consumed by a SIEM (e.g. Splunk).
-* store all matching certificate transparency events in a DynamoDB 
+* store all matching certificate transparency events in a DynamoDB
 
 ## Installation
 
@@ -16,7 +16,11 @@ Create the DynamoDB to store certificate transparency records in. This can be
 done manually or with the [`certspotter-dynamodb.yml`](certspotter-dynamodb.yml)
 template.
 
-Create an SQS Queue to send new certificate matches to.
+Create an SQS Queue to send new certificate matches to. This can be done with a command like
+
+```shell
+aws sqs create-queue --queue-name CertificateTransparencyMatches
+```
 
 Deploy the `certspotter-sqs.yml` CloudFormation template in AWS. The template
 parameters let you set

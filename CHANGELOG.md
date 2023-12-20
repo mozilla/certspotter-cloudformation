@@ -8,17 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [7.0.0] - 2023-11-22
 
+### Added
+
+- default region and account ID for SQS and DynamoDB, so you don't have to enter them if
+  they're hosted in the local account and region
+- security improvement of requiring use of IMDSv2 metadata interface
+
 ### Fixed
 
 - the initial run of certspotter with the `start_at_end` argument which didn't work because
   modern versions of certspotter run as a daemon and don't exit
 - some mistakes in the documentation
+- case where certspotter service fails by setting systemd to restart the service if it fails
 
 ### Changed
 
 - the OS from Centos 8 Stream to Ubuntu 22.04
 - location of send_to_sqs.py to hooks.d to follow the new requirement from the certspotter
   code
+- AWS EC2 instance type from t2.micro to c7a.medium
 
 ## [6.0.1] - 2023-08-11
 
