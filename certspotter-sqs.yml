@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: SSLMate Cert Spotter monitor of the Certificate Transparency logs, emitting events to SQS
 Metadata:
   SourceCode: https://github.com/mozilla/certspotter-cloudformation
-  Version: 7.0.0
+  Version: 7.1.0
 Parameters:
   SSHKeyName:
     Description: SSH Key Name
@@ -20,6 +20,8 @@ Parameters:
       for the current account.
     Type: String
     Default: ''
+    ConstraintDescription: A 12 digit AWS account ID
+    AllowedPattern: '^$|^\d{12}$'
   DynamoDBTableName:
     Description: The name of the DynamoDB table to store matching cert records in
     Type: String
@@ -28,6 +30,13 @@ Parameters:
     Description: The region of the DynamoDB table. Leave blank for the current region.
     Type: String
     Default: ''
+  S3BackupFileURI:
+    Description: An optional S3 URL to a file destination that certspotter will backup it's state to nightly. Leave
+      blank to skip backing up to S3.
+    Type: String
+    Default: ''
+    ConstraintDescription: An S3 URL beginning with s3:// and ending with .tar.gz
+    AllowedPattern: '^$|^s3://.*\.tar\.gz$'
   WatchListURI:
     Description: An S3 URL to a JSON document containing the list of domains
       under a 'domains' key
@@ -39,6 +48,8 @@ Parameters:
       want to associate with this new instance
     Type: String
     Default: ''
+    ConstraintDescription: An EIP Allocation ID beginning with eipalloc-
+    AllowedPattern: '^$|^eipalloc-.*'
   StartFromEndOfCTLogs:
     Description: 'Should certspotter start from the current end of the certificate transparency logs? "true" or "false" (Default : true)'
     Type: String
@@ -57,6 +68,7 @@ Conditions:
   BlankSQSRegion: !Equals [ !Ref 'SQSRegion', '' ]
   BlankSQSAccountId: !Equals [ !Ref 'SQSAccountId', '' ]
   BlankDynamoDBTableRegion: !Equals [ !Ref 'DynamoDBTableRegion', '' ]
+  S3BackupFileURIISet: !Not [!Equals [ !Ref 'S3BackupFileURI', '' ] ]
 Resources:
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -111,15 +123,31 @@ Resources:
               - Effect: Allow
                 Action: s3:ListAllMyBuckets
                 Resource: '*'
+  S3BackupReadWritePolicy:
+    Type: AWS::IAM::RolePolicy
+    Condition: S3BackupFileURIISet
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+            - s3:PutObject
+            - s3:GetObject
+            Resource: !Join [ '', [ 'arn:aws:s3:::', !Select [ '2', !Split [ '/', !Ref 'S3BackupFileURI' ] ], '/*' ] ]
+          - Effect: Allow
+            Action: s3:ListBucket
+            Resource: !Join [ '', [ 'arn:aws:s3:::', !Select [ '2', !Split [ '/', !Ref 'S3BackupFileURI' ] ] ] ]
+      PolicyName: ReadWriteCertSpotterBackupDataInS3
+      RoleName: !Ref IAMRole
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Roles:
         - !Ref IAMRole
-  LaunchTemplate:
+  IMDSv2RequiredLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
-      LaunchTemplateName: IMDSv2Required
       LaunchTemplateData:
         MetadataOptions:
           HttpTokens: required
@@ -136,11 +164,12 @@ Resources:
         - !Ref SecurityGroup
       IamInstanceProfile: !Ref InstanceProfile
       LaunchTemplate:
-        LaunchTemplateId: !Ref LaunchTemplate
-        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+        LaunchTemplateId: !Ref IMDSv2RequiredLaunchTemplate
+        Version: !GetAtt IMDSv2RequiredLaunchTemplate.LatestVersionNumber
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash -ex
+          trap "/usr/local/bin/cfn-signal --exit-code 1 '${WaitConditionHandle}'" ERR
           useradd --comment "Certspotter Daemon" --create-home certspotter
           for i in {1..3}; do apt update && apt -y install python3-pip git jq && break || sleep 10; done
           python3 -m pip install --upgrade pip
@@ -164,17 +193,49 @@ Resources:
           [Install]
           WantedBy=multi-user.target
           EOF
+          if [ -n "${S3BackupFileURI}" ]; then
+          cat << 'EOF' > /etc/systemd/system/certspotter-backup.service
+          [Unit]
+          Description=Certificate Transparency Log Monitor Data Backup
+          Wants=certspotter-backup.timer
+          
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/sh -c '/usr/bin/tar -c --directory=/home/certspotter/.certspotter --file - ./ | /usr/bin/gzip | /usr/local/bin/aws s3 cp --quiet - "${S3BackupFileURI}"'
+          
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          cat << 'EOF' > /etc/systemd/system/certspotter-backup.timer
+          [Unit]
+          Description=Certificate Transparency Log Monitor Nightly Data Backup
+          Wants=certspotter-backup.service
+          
+          [Timer]
+          Unit=certspotter-backup.service
+          OnCalendar=*-*-* 01:00:00
+          # Delay between 0 and 3 hours in seconds (3 * 60 * 60 = 10800)
+          RandomizedDelaySec=10800
+          
+          [Install]
+          WantedBy=timers.target
+          EOF
+          fi
           snap disable amazon-ssm-agent
           wget --no-verbose https://go.dev/dl/go1.21.4.linux-amd64.tar.gz
-          rm -rf /usr/local/go && tar -C /usr/local -xzf go1.21.4.linux-amd64.tar.gz
+          rm --recursive --force /usr/local/go && tar -x --directory=/usr/local --gzip --file go1.21.4.linux-amd64.tar.gz
           echo "export PATH=$PATH:/usr/local/go/bin" >> /etc/profile
           install --owner=certspotter --group=certspotter --directory /home/certspotter/gocode
           install --owner=certspotter --group=certspotter --directory /home/certspotter/.certspotter
-          install --owner=certspotter --group=certspotter --directory /home/certspotter/.certspotter/hooks.d
-          install --owner=certspotter --group=certspotter --mode=0644 /dev/null /home/certspotter/.certspotter/watchlist
+          if [ -n "${S3BackupFileURI}" ]; then
+            /usr/local/bin/aws s3 cp --quiet ${S3BackupFileURI} /dev/stdout | tar -x --gzip --directory=/home/certspotter/.certspotter --file - 
+          else
+            install --owner=certspotter --group=certspotter --directory /home/certspotter/.certspotter/hooks.d
+            install --owner=certspotter --group=certspotter --mode=0644 /dev/null /home/certspotter/.certspotter/watchlist
+            install --owner=certspotter --group=certspotter --mode=0755 /dev/null /home/certspotter/.certspotter/hooks.d/send_to_sqs.py
+          fi
           /usr/local/bin/aws s3 cp --quiet ${WatchListURI} /dev/stdout | jq -r '.domains|map("."+.)|.[]' > /home/certspotter/.certspotter/watchlist
           runuser --login certspotter -c 'GOPATH=/home/certspotter/gocode /usr/local/go/bin/go install software.sslmate.com/src/certspotter/cmd/certspotter@latest'
-          install --owner=certspotter --group=certspotter --mode=0755 /dev/null /home/certspotter/.certspotter/hooks.d/send_to_sqs.py
           install --owner=certspotter --group=certspotter --mode=0644 /dev/null /home/certspotter/certspotter_config.txt
           echo -n "${AWS::Region},${AWS::AccountId},${SQSRegion},${SQSQueueName},${SQSAccountId},${DynamoDBTableName},${DynamoDBTableRegion}" > /home/certspotter/certspotter_config.txt
           cat << 'EOF' > /home/certspotter/.certspotter/hooks.d/send_to_sqs.py
@@ -234,13 +295,16 @@ Resources:
                   'date': int(data['ssl_start_time']),
                   'record': json.dumps(data, sort_keys=True)})
           EOF
-          if [ "${StartFromEndOfCTLogs}" = "true" ]; then
+          if [ "${StartFromEndOfCTLogs}" = "true" -a -z "${S3BackupFileURI}" ]; then
               set +e
               runuser --login certspotter -c 'timeout 30 /home/certspotter/gocode/bin/certspotter -verbose -start_at_end'
               set -e
               echo "Initial certspotter index pointed to the end of current CT logs"
           fi
           systemctl daemon-reload && systemctl enable certspotter.service && systemctl start certspotter.service
+          if [ -n "${S3BackupFileURI}" ]; then
+            systemctl enable certspotter-backup.timer --now
+          fi
           /usr/local/bin/cfn-signal '${WaitConditionHandle}'
   WaitConditionHandle:
     Type: AWS::CloudFormation::WaitConditionHandle
