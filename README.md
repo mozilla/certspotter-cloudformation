@@ -85,7 +85,7 @@ to work with certspotter v0.15.0 or newer as it doesn't currently work.
 
 ## Deploying
 
-When updating an existing deployment, try retaining the `/home/certspotter/.certspotter/certs/`
+When updating an existing deployment, try retaining the `/home/certspotter/.certspotter/`
 directory as it contains a copy of all the certs it finds that match the watchlist
 which might be interesting down the road as well as the current position in all
 the logs which will allow you to pick up from where certspotter last was in the 
@@ -100,6 +100,14 @@ beginning of the logs would take a very long time.
 To do this, set the `StartFromEndOfCTLogs` CloudFormation parameter to `true`
 
 This will index all of the logs at their tails.
+
+### Starting from a backed up state
+
+If you use the `S3BackupFileURI` parameter and set a file location in S3 that nightly
+backups are sent to, you can spin up a new stack (after tearing down the old stack or
+after some kind of data loss on your existing instance) and set the `S3BackupFileURI`
+to the same location and the new intense will restore the backup from S3 and pickup
+from where it was last at in the CT logs.
 
 ## DynamoDB Table
 

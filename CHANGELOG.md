@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.1.0] - 2023-12-29
+
+### Added
+
+- new parameter called S3BackupFileURI which is used to point to an S3 file location
+  where the instance can upload nightly backups of the certspotter state
+- feature which looks for the presence of a backup in S3 when provisioning the instance
+  and uses that backed up state as a starting point for certspotter
+- parameter constraints to prevent users from entering invalid parameter values
+
+### Fixed
+
+- case where it's not possible to deploy multiple certspotter CloudFormation stacks due
+  to a collision of launch template names
+
+### Changed
+
+- bash arguments to use expanded forms for easier reading
+
 ## [7.0.0] - 2023-11-22
 
 ### Added
@@ -122,7 +141,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial commit
 
-[Unreleased]: https://github.com/mozilla/certspotter-cloudformation/compare/v7.0.0...HEAD
+[Unreleased]: https://github.com/mozilla/certspotter-cloudformation/compare/v7.1.0...HEAD
+[7.1.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v7.0.0...v7.1.0
 [7.0.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v6.0.1...v7.0.0
 [6.0.1]: https://github.com/mozilla/certspotter-cloudformation/compare/v6.0.0...v6.0.1
 [6.0.0]: https://github.com/mozilla/certspotter-cloudformation/compare/v5.0.0...v6.0.0
